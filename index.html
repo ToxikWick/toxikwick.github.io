@@ -70,12 +70,12 @@ select option{background:#181818;color:#E2DDD6}
 .udiv{height:1px;background:#191919;margin:3px 0}
 
 /* CONTENT */
-.content{padding:14px 14px 60px;max-width:860px;margin:0 auto;flex:1}
+.content{padding:12px 12px 60px;max-width:860px;margin:0 auto;flex:1;overflow-x:hidden}
 .tc{display:none}.tc.on{display:block}
 
 /* CARDS */
 .card{background:#0E0E0E;border:1px solid #1C1C1C;border-radius:10px;padding:12px 14px}
-.card-hero{background:linear-gradient(135deg,#0D0D0D,#110D00);border:1px solid rgba(201,168,76,.12);border-radius:13px;padding:16px 18px;margin-bottom:10px}
+.card-hero{background:linear-gradient(135deg,#0D0D0D,#110D00);border:1px solid rgba(201,168,76,.12);border-radius:13px;padding:14px 14px;margin-bottom:10px}
 .card-lg{background:#0E0E0E;border:1px solid #1C1C1C;border-radius:13px;padding:20px}
 
 /* GRIDS */
@@ -87,9 +87,9 @@ select option{background:#181818;color:#E2DDD6}
 
 /* TYPE */
 .slabel{font-size:9px;color:#444;letter-spacing:.12em;text-transform:uppercase;font-family:'DM Mono',monospace;display:block;margin-bottom:4px}
-.sval{font-size:16px;font-weight:700;font-family:'DM Mono',monospace;white-space:nowrap}
+.sval{font-size:15px;font-weight:700;font-family:'DM Mono',monospace}
 .sval-sm{font-size:15px;font-weight:700;font-family:'DM Mono',monospace}
-.sval-lg{font-size:22px;font-weight:700;font-family:'DM Mono',monospace;white-space:nowrap}
+.sval-lg{font-size:20px;font-weight:700;font-family:'DM Mono',monospace}
 .sec-title{font-size:9px;color:#444;letter-spacing:.12em;text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:10px}
 .muted{color:#444;font-size:13px}
 .divider{height:1px;background:#181818;margin:12px 0}
@@ -191,6 +191,15 @@ select option{background:#181818;color:#E2DDD6}
 .ebtn.on{background:rgba(201,168,76,.12);border-color:rgba(201,168,76,.4);color:#E8C97A;font-weight:600}
 .dur-tag{font-size:9px;font-family:'DM Mono',monospace;color:#555;background:#131313;border:1px solid #1C1C1C;border-radius:3px;padding:1px 5px;margin-left:5px}
 
+
+
+/* HERO TOP ROW */
+.hero-top-row{display:flex;justify-content:space-between;align-items:flex-start}
+.hero-pnl-col{text-align:right}
+@media(max-width:360px){
+  .hero-top-row{flex-direction:column;gap:6px}
+  .hero-pnl-col{text-align:left}
+}
 
 /* EMOTION HIERARCHY BUTTONS */
 .ebtn.e-top{color:#2DB87C;border-color:rgba(45,184,124,.25)}
@@ -314,16 +323,16 @@ select option{background:#181818;color:#E2DDD6}
     <div id="tab-dash" class="tc on">
       <div class="card-hero">
         <div style="font-size:8px;color:rgba(201,168,76,.4);font-family:'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px">All Time</div>
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+        <div class="hero-top-row" style="margin-bottom:10px">
           <div><div class="slabel">Account Balance</div><div class="sval-lg" id="h-bal" style="color:#E8C97A">—</div></div>
-          <div style="text-align:right"><div class="slabel">All-Time P&L</div><div class="sval" id="h-pnl">—</div></div>
+          <div class="hero-pnl-col"><div class="slabel">All-Time P&L</div><div class="sval" id="h-pnl">—</div></div>
         </div>
         <div style="height:1px;background:rgba(201,168,76,.09);margin-bottom:10px"></div>
-        <div style="display:flex;gap:16px;flex-wrap:wrap">
-          <div><div class="slabel">Gross Profit</div><div style="font-size:13px;font-weight:700;color:#2DB87C;font-family:'DM Mono',monospace" id="h-gp">—</div></div>
-          <div><div class="slabel">Gross Loss</div><div style="font-size:13px;font-weight:700;color:#E05252;font-family:'DM Mono',monospace" id="h-gl">—</div></div>
-          <div><div class="slabel">Profit Factor</div><div style="font-size:13px;font-weight:700;color:#C9A84C;font-family:'DM Mono',monospace" id="h-pf">—</div></div>
-          <div><div class="slabel">Total Trades</div><div style="font-size:13px;font-weight:700;color:#555;font-family:'DM Mono',monospace" id="h-tot">—</div></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+          <div><div class="slabel">Gross Profit</div><div style="font-size:12px;font-weight:700;color:#2DB87C;font-family:'DM Mono',monospace" id="h-gp">—</div></div>
+          <div><div class="slabel">Gross Loss</div><div style="font-size:12px;font-weight:700;color:#E05252;font-family:'DM Mono',monospace" id="h-gl">—</div></div>
+          <div><div class="slabel">Profit Factor</div><div style="font-size:12px;font-weight:700;color:#C9A84C;font-family:'DM Mono',monospace" id="h-pf">—</div></div>
+          <div><div class="slabel">Total Trades</div><div style="font-size:12px;font-weight:700;color:#555;font-family:'DM Mono',monospace" id="h-tot">—</div></div>
         </div>
       </div>
       <div class="ptabs" id="d-ptabs">
