@@ -151,12 +151,12 @@ select option{background:#181818;color:#E2DDD6}
 .flash button{background:none;border:none;color:inherit;cursor:pointer;font-size:17px}
 
 /* HISTORY CARD */
-.hcard{background:#0E0E0E;border:1px solid #1C1C1C;border-radius:10px;padding:12px 14px;margin-bottom:8px}
+.hcard{background:#0E0E0E;border:1px solid #1C1C1C;border-radius:10px;padding:10px 12px;margin-bottom:6px}
 .hmeta{font-size:10px;color:#444;font-family:'DM Mono',monospace;margin-bottom:5px;line-height:1.7}
 .hnote{font-size:11px;color:#777;font-style:italic;border-left:2px solid #1C1C1C;padding-left:8px;margin-top:5px;line-height:1.6}
 .hright{display:flex;flex-direction:column;align-items:flex-end;gap:5px;min-width:82px;margin-left:8px}
-.hprice-grid{display:grid;grid-template-columns:repeat(3,auto);gap:10px;margin-bottom:7px}
-.hprice-lbl{font-size:8px;color:#2A2A2A;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1px}
+.hprice-grid{display:grid;grid-template-columns:repeat(4,auto);gap:10px;margin-bottom:5px}
+.hprice-lbl{font-size:8px;color:#666;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1px}
 .hprice-val{font-size:12px;font-family:'DM Mono',monospace;color:#E2DDD6;font-weight:600}
 /* ACCORDION */
 .acc-hdr{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:#0E0E0E;border:1px solid #1C1C1C;border-radius:8px;cursor:pointer;transition:background .15s}
@@ -1267,8 +1267,8 @@ function tradeCard(t){
   const col=gc(t.result);
   const lot=t.lot_size?' · '+t.lot_size+' lot':'';
   const durTag=t.trade_duration?'<span class="dur-tag">'+t.trade_duration+'</span>':'';
-  const tim=(t.entry_time||t.exit_time)?'<div style="font-size:9px;color:#2A2A2A;font-family:DM Mono,monospace;margin-bottom:6px">'+(t.entry_time?'In: '+t.entry_time:'-')+' → '+(t.exit_time?'Out: '+t.exit_time:'-')+'</div>':'';
-  const exit=t.exit_price?' → '+t.exit_price:'';
+  const tim=(t.entry_time||t.exit_time)?'<div style="font-size:9px;color:#888;font-family:DM Mono,monospace;margin-bottom:4px">'+(t.entry_time?'In: '+t.entry_time:'-')+' → '+(t.exit_time?'Out: '+t.exit_time:'-')+'</div>':'';
+  // exit now shown as separate column in priceGrid
   // Parse meta tag
   const meta=parseMetaTag(t.notes);
   const mainNotes=stripMetaAndConf(t.notes);
@@ -1276,9 +1276,27 @@ function tradeCard(t){
   let confStr='';
   const confMatch=(t.notes||'').match(/\n?\[([^\]]+)\]$/);
   if(confMatch)confStr=confMatch[1];
-  const formattedNotes=mainNotes?mainNotes.split('\n').filter(l=>l.trim()).map(l=>'<div style="margin-bottom:3px">'+l+'</div>').join(''):'';
+  const NOTE_LIMIT=180;
+  const formattedNotes=mainNotes?(()=>{
+    const lines=mainNotes.split('\n').filter(l=>l.trim()).map(l=>'<div style="margin-bottom:3px">'+l+'</div>').join('');
+    if(mainNotes.length<=NOTE_LIMIT)return lines;
+    const short=mainNotes.slice(0,NOTE_LIMIT);
+    const shortLines=short.split('\n').filter(l=>l.trim()).map(l=>'<div style="margin-bottom:3px">'+l+'</div>').join('');
+    const uid='rm'+Math.random().toString(36).slice(2,7);
+    return '<div id="s'+uid+'">'+shortLines+'<span style="color:#555">…</span> '+
+      '<span onclick="document.getElementById(\'s'+uid+'\').style.display=\'none\';document.getElementById(\'f'+uid+'\').style.display=\'block\';" '+
+      'style="color:#C9A84C;font-size:9px;cursor:pointer;font-family:DM Mono,monospace">READ MORE</span></div>'+
+      '<div id="f'+uid+'" style="display:none">'+lines+
+      '<span onclick="document.getElementById(\'f'+uid+'\').style.display=\'none\';document.getElementById(\'s'+uid+'\').style.display=\'block\';" '+
+      'style="color:#C9A84C;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;display:block;margin-top:4px">SHOW LESS</span></div>';
+  })():'';
   const confBadges=confStr?'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+confStr.split(',').map(c=>'<span style="font-size:9px;padding:2px 7px;border-radius:3px;background:rgba(45,184,124,.07);color:#2DB87C;border:1px solid rgba(45,184,124,.18)">'+c.trim()+'</span>').join('')+'</div>':'';
-  const priceGrid='<div class="hprice-grid" style="margin-bottom:6px"><div><div class="hprice-lbl">Entry</div><div class="hprice-val">'+t.entry+exit+'</div></div><div><div class="hprice-lbl">SL</div><div class="hprice-val">'+t.stop_loss+'</div></div>'+(t.lot_size?'<div><div class="hprice-lbl">Lots</div><div class="hprice-val">'+t.lot_size+'</div></div>':'')+'</div>';
+  const priceGrid='<div class="hprice-grid" style="margin-bottom:6px">'+
+    '<div><div class="hprice-lbl">Entry</div><div class="hprice-val">'+t.entry+'</div></div>'+
+    (t.exit_price?'<div><div class="hprice-lbl">Exit</div><div class="hprice-val">'+t.exit_price+'</div></div>':'')+
+    '<div><div class="hprice-lbl">SL</div><div class="hprice-val" style="color:#E05252AA">'+t.stop_loss+'</div></div>'+
+    (t.lot_size?'<div><div class="hprice-lbl">Lots</div><div class="hprice-val">'+t.lot_size+'</div></div>':'')+
+    '</div>';
   // Meta row
   const metaRow='<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">'+
     (meta.setupId?'<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:rgba(201,168,76,.08);color:#C9A84C;border:1px solid rgba(201,168,76,.2);font-family:DM Mono,monospace">#'+meta.setupId+'</span>':'')+
@@ -1290,8 +1308,8 @@ function tradeCard(t){
     (meta.exec<100&&meta.unexec?'<div style="font-size:10px;color:#555;background:rgba(224,82,82,.04);border:1px solid rgba(224,82,82,.1);border-radius:5px;padding:5px 9px;margin-bottom:7px"><span style="color:#E05252;font-weight:600">Unexecuted '+(100-meta.exec)+'%:</span> '+meta.unexec+'</div>':'');
   return '<div class="hcard" style="border-left:3px solid '+col+'33"><div style="display:flex;justify-content:space-between;align-items:flex-start">'+
     '<div style="flex:1">'+
-    '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:5px">'+sessChip(t.session)+dirChip(t.direction)+'<span style="font-size:9px;color:#2A2A2A;font-family:DM Mono,monospace">'+t.timeframe+lot+'</span>'+durTag+'</div>'+
-    '<div style="font-weight:600;font-size:12px;color:#777;margin-bottom:3px">'+t.trade_date+'</div>'+
+    '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-bottom:4px">'+sessChip(t.session)+dirChip(t.direction)+'<span style="font-size:9px;color:#888;font-family:DM Mono,monospace">'+t.timeframe+lot+'</span>'+durTag+'</div>'+
+    '<div style="font-weight:600;font-size:11px;color:#888;margin-bottom:2px">'+t.trade_date+'</div>'+
     tim+priceGrid+metaRow+
     (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
     confBadges+
