@@ -80,15 +80,16 @@ select option{background:#181818;color:#E2DDD6}
 
 /* GRIDS */
 .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:7px}
+.stat4grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:7px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:7px}
 .fg{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .s2{grid-column:1/-1}
 
 /* TYPE */
 .slabel{font-size:9px;color:#444;letter-spacing:.12em;text-transform:uppercase;font-family:'DM Mono',monospace;display:block;margin-bottom:4px}
-.sval{font-size:20px;font-weight:700;font-family:'DM Mono',monospace}
+.sval{font-size:16px;font-weight:700;font-family:'DM Mono',monospace;white-space:nowrap}
 .sval-sm{font-size:15px;font-weight:700;font-family:'DM Mono',monospace}
-.sval-lg{font-size:26px;font-weight:700;font-family:'DM Mono',monospace}
+.sval-lg{font-size:22px;font-weight:700;font-family:'DM Mono',monospace;white-space:nowrap}
 .sec-title{font-size:9px;color:#444;letter-spacing:.12em;text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:10px}
 .muted{color:#444;font-size:13px}
 .divider{height:1px;background:#181818;margin:12px 0}
@@ -211,6 +212,7 @@ select option{background:#181818;color:#E2DDD6}
 
 @media(max-width:480px){
   .g4{grid-template-columns:repeat(2,1fr)}
+  .stat4grid{grid-template-columns:repeat(2,1fr)}
   .fg{grid-template-columns:1fr}
   .g2{grid-template-columns:1fr}
   .cgrid{grid-template-columns:1fr}
@@ -331,24 +333,24 @@ select option{background:#181818;color:#E2DDD6}
         <button class="ptab" data-p="year">This Year</button>
         <button class="ptab" data-p="all">All Time</button>
       </div>
-      <div style="font-size:9px;color:#2A2A2A;font-family:'DM Mono',monospace;margin-bottom:7px" id="d-plbl"></div>
+      <div style="font-size:9px;color:#666;font-family:'DM Mono',monospace;margin-bottom:7px" id="d-plbl"></div>
       <!-- Compact stat row -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:7px">
+      <div class="stat4grid">
         <div style="background:#0E0E0E;border:1px solid #1C1C1C;border-radius:8px;padding:8px 10px;text-align:center">
           <div class="slabel" style="margin-bottom:2px">Trades</div>
-          <div style="font-size:17px;font-weight:700;color:#555;font-family:'DM Mono',monospace" id="ps-t">—</div>
+          <div style="font-size:15px;font-weight:700;color:#555;font-family:'DM Mono',monospace" id="ps-t">—</div>
         </div>
         <div style="background:#0E0E0E;border:1px solid #1C1C1C;border-radius:8px;padding:8px 10px;text-align:center">
           <div class="slabel" style="margin-bottom:2px">Wins</div>
-          <div style="font-size:17px;font-weight:700;color:#2DB87C;font-family:'DM Mono',monospace" id="ps-w">—</div>
+          <div style="font-size:15px;font-weight:700;color:#2DB87C;font-family:'DM Mono',monospace" id="ps-w">—</div>
         </div>
         <div style="background:#0E0E0E;border:1px solid #1C1C1C;border-radius:8px;padding:8px 10px;text-align:center">
           <div class="slabel" style="margin-bottom:2px">Loss</div>
-          <div style="font-size:17px;font-weight:700;color:#E05252;font-family:'DM Mono',monospace" id="ps-l">—</div>
+          <div style="font-size:15px;font-weight:700;color:#E05252;font-family:'DM Mono',monospace" id="ps-l">—</div>
         </div>
         <div style="background:#0E0E0E;border:1px solid #1C1C1C;border-radius:8px;padding:8px 10px;text-align:center">
           <div class="slabel" style="margin-bottom:2px">BE</div>
-          <div style="font-size:17px;font-weight:700;color:#C9A84C;font-family:'DM Mono',monospace" id="ps-b">—</div>
+          <div style="font-size:15px;font-weight:700;color:#C9A84C;font-family:'DM Mono',monospace" id="ps-b">—</div>
         </div>
       </div>
       <div class="g2">
@@ -366,7 +368,7 @@ select option{background:#181818;color:#E2DDD6}
         </div>
         <div class="prog-track"><div class="prog-bar" id="d-prog" style="width:0%"></div></div>
         <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:9px;font-family:'DM Mono',monospace">
-          <span style="color:#2A2A2A">0%</span><span id="d-prog-lbl" style="font-weight:600">—</span><span style="color:#2A2A2A">80%</span>
+          <span style="color:#555">0%</span><span id="d-prog-lbl" style="font-weight:600">—</span><span style="color:#555">80%</span>
         </div>
         <div style="margin-top:9px">
           <div style="display:flex;justify-content:space-between;font-size:9px;font-family:'DM Mono',monospace;margin-bottom:3px">
@@ -1306,20 +1308,26 @@ function tradeCard(t){
     '<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:'+(meta.exec>=80?'rgba(45,184,124,.07)':meta.exec>=60?'rgba(201,168,76,.07)':'rgba(224,82,82,.07)')+';color:'+(meta.exec>=80?'#2DB87C':meta.exec>=60?'#C9A84C':'#E05252')+';border:1px solid '+(meta.exec>=80?'rgba(45,184,124,.2)':meta.exec>=60?'rgba(201,168,76,.2)':'rgba(224,82,82,.2)')+';font-family:DM Mono,monospace">⚡ '+meta.exec+'% exec</span>'+
     '</div>'+
     (meta.exec<100&&meta.unexec?'<div style="font-size:10px;color:#555;background:rgba(224,82,82,.04);border:1px solid rgba(224,82,82,.1);border-radius:5px;padding:5px 9px;margin-bottom:7px"><span style="color:#E05252;font-weight:600">Unexecuted '+(100-meta.exec)+'%:</span> '+meta.unexec+'</div>':'');
-  return '<div class="hcard" style="border-left:3px solid '+col+'33"><div style="display:flex;justify-content:space-between;align-items:flex-start">'+
-    '<div style="flex:1">'+
-    '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-bottom:4px">'+sessChip(t.session)+dirChip(t.direction)+'<span style="font-size:9px;color:#888;font-family:DM Mono,monospace">'+t.timeframe+lot+'</span>'+durTag+'</div>'+
+  return '<div class="hcard" style="border-left:3px solid '+col+'33">'+
+    // ── TOP ROW: chips + result + pnl + actions ──
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
+      '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">'+sessChip(t.session)+dirChip(t.direction)+'<span style="font-size:9px;color:#888;font-family:DM Mono,monospace">'+t.timeframe+lot+'</span>'+durTag+'</div>'+
+      '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'+
+        '<span style="font-size:13px;font-weight:700;color:'+pc(t.pnl)+';font-family:DM Mono,monospace">'+fp(t.pnl)+'</span>'+
+        '<span class="badge" style="background:'+col+'22;color:'+col+';border:1px solid '+col+'44">'+t.result+'</span>'+
+      '</div>'+
+    '</div>'+
+    // ── DATE + TIME ──
     '<div style="font-weight:600;font-size:11px;color:#888;margin-bottom:2px">'+t.trade_date+'</div>'+
     tim+priceGrid+metaRow+
     (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
     confBadges+
+    // ── EDIT / DELETE ──
+    '<div style="display:flex;gap:6px;margin-top:8px">'+
+      '<button onclick="openEditTrade(\''+t.id+'\')" style="flex:1;font-size:10px;color:#C9A84C;background:transparent;border:1px solid rgba(201,168,76,.25);border-radius:4px;padding:5px;cursor:pointer">✏ Edit</button>'+
+      '<div id="del-'+t.id+'" style="flex:1"><button class="btn-del" style="width:100%" onclick="confirmDel(\''+t.id+'\')">Delete</button></div>'+
     '</div>'+
-    '<div class="hright">'+
-    '<span class="badge" style="background:'+col+'22;color:'+col+';border:1px solid '+col+'44">'+t.result+'</span>'+
-    '<span style="font-size:14px;font-weight:700;color:'+pc(t.pnl)+';font-family:DM Mono,monospace">'+fp(t.pnl)+'</span>'+
-    '<button onclick="openEditTrade(\''+t.id+'\')" style="font-size:10px;color:#C9A84C;background:transparent;border:1px solid rgba(201,168,76,.25);border-radius:4px;padding:3px 7px;cursor:pointer;white-space:nowrap">✏ Edit</button>'+
-    '<div id="del-'+t.id+'"><button class="btn-del" onclick="confirmDel(\''+t.id+'\')">Delete</button></div>'+
-    '</div></div></div>';
+  '</div>';
 }
 
 function accBlock(id,label,sub,tradeArr,innerHtml){
