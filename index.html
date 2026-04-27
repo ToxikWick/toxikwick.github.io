@@ -235,6 +235,20 @@ select option{background:#181818;color:#E2DDD6}
 /* DISCIPLINE STARS */
 .dstar{font-size:22px;cursor:pointer;transition:color .1s;user-select:none;line-height:1;color:#222}
 /* QUICK LOG FAB */
+
+/* MULTI-ENTRY LOG */
+.log-mode-toggle{display:flex;gap:0;background:#141414;border-radius:8px;padding:3px;margin-bottom:14px}
+.lmtab{flex:1;padding:7px;text-align:center;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;color:#333;border:none;background:transparent;font-family:'DM Sans',sans-serif}
+.lmtab.on{background:#1C1C1C;color:#E8C97A;border:1px solid rgba(201,168,76,.2)}
+.me-row{background:#111;border:1px solid #1C1C1C;border-radius:8px;padding:10px 11px;margin-bottom:8px}
+.me-row-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.me-entry-lbl{font-size:10px;font-weight:700;font-family:'DM Mono',monospace;color:#C9A84C;letter-spacing:.08em}
+.me-pnl{font-size:12px;font-weight:700;font-family:'DM Mono',monospace}
+.me-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.me-total{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.15);border-radius:8px;margin-top:4px;margin-bottom:12px}
+.me-total-lbl{font-size:10px;color:#888;font-family:'DM Mono',monospace;letter-spacing:.1em}
+.me-total-val{font-size:16px;font-weight:700;font-family:'DM Mono',monospace}
+
 .ql-fab{position:fixed;bottom:22px;right:16px;width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,#C9A84C,#E8C97A);border:none;cursor:pointer;display:none;align-items:center;justify-content:center;font-size:20px;z-index:150;box-shadow:0 4px 18px rgba(201,168,76,.35);font-weight:900;color:#000;line-height:1}
 
 @media(max-width:480px){
@@ -430,6 +444,14 @@ select option{background:#181818;color:#E2DDD6}
           <div class="fld"><label>Direction</label><select id="f-dir" onchange="autoCalc()"><option>Long</option><option>Short</option></select></div>
         </div>
         <div class="divider"></div>
+        <!-- LOG MODE TOGGLE -->
+        <div class="log-mode-toggle">
+          <button class="lmtab on" id="lm-single" onclick="setLogMode('single')">Single Entry</button>
+          <button class="lmtab" id="lm-multi" onclick="setLogMode('multi')">Multi Entry (3)</button>
+        </div>
+
+        <!-- SINGLE ENTRY SECTION -->
+        <div id="single-entry-section">
         <div class="slabel" style="color:#C9A84C;margin-bottom:8px">Price & Time</div>
         <div class="fg">
           <div class="fld"><label>Entry Price</label><input type="number" id="f-entry" placeholder="3280.50" oninput="autoCalc()"></div>
@@ -453,6 +475,72 @@ select option{background:#181818;color:#E2DDD6}
           </div>
           <div class="fld"><label>Result</label><select id="f-result"><option>Win</option><option>Loss</option><option>BE</option></select></div>
         </div>
+        </div><!-- end single-entry-section -->
+
+        <!-- MULTI ENTRY SECTION -->
+        <div id="multi-entry-section" style="display:none">
+          <div class="slabel" style="color:#C9A84C;margin-bottom:8px">Entries — Price & Time</div>
+          <!-- ENTRY 1 -->
+          <div class="me-row">
+            <div class="me-row-hdr">
+              <span class="me-entry-lbl">Entry 1</span>
+              <span class="me-pnl" id="me-pnl-1" style="color:#555">—</span>
+            </div>
+            <div class="me-grid">
+              <div class="fld"><label>Entry Price</label><input type="number" id="me-entry-1" step="0.001" oninput="meCalc(1)"></div>
+              <div class="fld"><label>Exit Price</label><input type="number" id="me-exit-1" step="0.001" oninput="meCalc(1)"></div>
+              <div class="fld"><label>Stop Loss</label><input type="number" id="me-sl-1" step="0.001"></div>
+              <div class="fld"><label>Lot Size</label><input type="number" id="me-lots-1" step="0.01" value="0.01" oninput="meCalc(1)"></div>
+              <div class="fld"><label>In Time</label><input type="time" id="me-etime-1"></div>
+              <div class="fld"><label>Out Time</label><input type="time" id="me-xtime-1"></div>
+            </div>
+            <div class="fld" style="margin-top:6px"><label>Result</label>
+              <select id="me-result-1"><option>Win</option><option>Loss</option><option>BE</option></select>
+            </div>
+          </div>
+          <!-- ENTRY 2 -->
+          <div class="me-row">
+            <div class="me-row-hdr">
+              <span class="me-entry-lbl">Entry 2</span>
+              <span class="me-pnl" id="me-pnl-2" style="color:#555">—</span>
+            </div>
+            <div class="me-grid">
+              <div class="fld"><label>Entry Price</label><input type="number" id="me-entry-2" step="0.001" oninput="meCalc(2)"></div>
+              <div class="fld"><label>Exit Price</label><input type="number" id="me-exit-2" step="0.001" oninput="meCalc(2)"></div>
+              <div class="fld"><label>Stop Loss</label><input type="number" id="me-sl-2" step="0.001"></div>
+              <div class="fld"><label>Lot Size</label><input type="number" id="me-lots-2" step="0.01" value="0.01" oninput="meCalc(2)"></div>
+              <div class="fld"><label>In Time</label><input type="time" id="me-etime-2"></div>
+              <div class="fld"><label>Out Time</label><input type="time" id="me-xtime-2"></div>
+            </div>
+            <div class="fld" style="margin-top:6px"><label>Result</label>
+              <select id="me-result-2"><option>Win</option><option>Loss</option><option>BE</option></select>
+            </div>
+          </div>
+          <!-- ENTRY 3 -->
+          <div class="me-row">
+            <div class="me-row-hdr">
+              <span class="me-entry-lbl">Entry 3</span>
+              <span class="me-pnl" id="me-pnl-3" style="color:#555">—</span>
+            </div>
+            <div class="me-grid">
+              <div class="fld"><label>Entry Price</label><input type="number" id="me-entry-3" step="0.001" oninput="meCalc(3)"></div>
+              <div class="fld"><label>Exit Price</label><input type="number" id="me-exit-3" step="0.001" oninput="meCalc(3)"></div>
+              <div class="fld"><label>Stop Loss</label><input type="number" id="me-sl-3" step="0.001"></div>
+              <div class="fld"><label>Lot Size</label><input type="number" id="me-lots-3" step="0.01" value="0.01" oninput="meCalc(3)"></div>
+              <div class="fld"><label>In Time</label><input type="time" id="me-etime-3"></div>
+              <div class="fld"><label>Out Time</label><input type="time" id="me-xtime-3"></div>
+            </div>
+            <div class="fld" style="margin-top:6px"><label>Result</label>
+              <select id="me-result-3"><option>Win</option><option>Loss</option><option>BE</option></select>
+            </div>
+          </div>
+          <!-- OVERALL P&L -->
+          <div class="me-total">
+            <span class="me-total-lbl">OVERALL P&L</span>
+            <span class="me-total-val" id="me-total-pnl" style="color:#555">—</span>
+          </div>
+        </div><!-- end multi-entry-section -->
+
         <div class="divider"></div>
         <!-- UPDATED CONFLUENCE -->
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
@@ -500,7 +588,7 @@ select option{background:#181818;color:#E2DDD6}
         </div>
         <div class="divider"></div>
         <div class="fld"><label>Notes / Review</label><textarea id="f-notes" rows="3" placeholder="Execution notes, what the market did, psychology..."></textarea></div>
-        <button class="btn-p" id="save-btn" onclick="saveTrade()" style="width:100%;margin-top:16px;padding:13px;font-size:13px">SAVE TRADE</button>
+        <button class="btn-p" id="save-btn" onclick="handleSave()" style="width:100%;margin-top:16px;padding:13px;font-size:13px">SAVE TRADE</button>
       </div>
     </div>
 
@@ -937,6 +1025,124 @@ window.selectEditDisc=function(star){
   document.getElementById('e-disc-label').textContent=val+' — '+DISC_LBLS[val];
   document.querySelectorAll('#e-disc-stars .dstar').forEach((s,i)=>{s.style.color=i<val?'#C9A84C':'#222'});
 };
+
+// -- LOG MODE --
+let logMode='single';
+window.setLogMode=function(mode){
+  logMode=mode;
+  document.getElementById('lm-single').classList.toggle('on',mode==='single');
+  document.getElementById('lm-multi').classList.toggle('on',mode==='multi');
+  document.getElementById('single-entry-section').style.display=mode==='single'?'':'none';
+  document.getElementById('multi-entry-section').style.display=mode==='multi'?'':'none';
+  document.getElementById('save-btn').textContent=mode==='multi'?'SAVE ALL 3 ENTRIES':'SAVE TRADE';
+};
+
+// -- MULTI ENTRY P&L CALC --
+window.meCalc=function(n){
+  const en=parseFloat(document.getElementById('me-entry-'+n).value);
+  const ex=parseFloat(document.getElementById('me-exit-'+n).value);
+  const lo=parseFloat(document.getElementById('me-lots-'+n).value)||0.01;
+  const dir=document.getElementById('f-dir').value;
+  const pnlEl=document.getElementById('me-pnl-'+n);
+  const resEl=document.getElementById('me-result-'+n);
+  if(en&&ex){
+    const diff=dir==='Long'?(ex-en):(en-ex);
+    const pnl=Math.round(diff*lo*100*100)/100;
+    pnlEl.textContent=(pnl>=0?'+':'')+pnl.toFixed(2);
+    pnlEl.style.color=pnl>0?'#2DB87C':pnl<0?'#E05252':'#C9A84C';
+    resEl.value=pnl>0?'Win':pnl<0?'Loss':'BE';
+  } else {
+    pnlEl.textContent='—';pnlEl.style.color='#555';
+  }
+  // Update total
+  let total=0;let hasVal=false;
+  for(let i=1;i<=3;i++){
+    const e=parseFloat(document.getElementById('me-entry-'+i).value);
+    const x=parseFloat(document.getElementById('me-exit-'+i).value);
+    const l=parseFloat(document.getElementById('me-lots-'+i).value)||0.01;
+    if(e&&x){const diff2=dir==='Long'?(x-e):(e-x);total+=Math.round(diff2*l*100*100)/100;hasVal=true;}
+  }
+  const totEl=document.getElementById('me-total-pnl');
+  if(hasVal){
+    totEl.textContent=(total>=0?'+':'')+'$'+Math.abs(total).toFixed(2);
+    totEl.style.color=total>0?'#2DB87C':total<0?'#E05252':'#C9A84C';
+  } else {totEl.textContent='—';totEl.style.color='#555';}
+};
+
+// -- HANDLE SAVE (routes to single or multi) --
+window.handleSave=function(){
+  if(logMode==='multi')saveMultiTrade();
+  else saveTrade();
+};
+
+// -- SAVE MULTI TRADE --
+window.saveMultiTrade=async function(){
+  const btn=document.getElementById('save-btn');
+  // Validate at least entry 1 has price + SL
+  const e1=document.getElementById('me-entry-1').value;
+  const sl1=document.getElementById('me-sl-1').value;
+  if(!e1||!sl1){flash('err','Entry 1 price and Stop Loss are required.');return;}
+  btn.disabled=true;btn.textContent='SAVING...';
+
+  // Shared fields
+  const date=document.getElementById('f-date').value;
+  const session=document.getElementById('f-sess').value;
+  const tf=document.getElementById('f-tf').value;
+  const dir=document.getElementById('f-dir').value;
+  const setupId=document.getElementById('f-setup').value.trim();
+  const emotion=document.getElementById('f-emotion').value;
+  const exec=parseInt(document.getElementById('f-exec').value)||100;
+  const unexec=exec<100?document.getElementById('f-unexec').value.trim():'';
+  const disc=parseInt(document.getElementById('f-disc').value)||5;
+  const rawNotes=document.getElementById('f-notes').value.trim();
+  // Checklist
+  const confScore=CKEYS.filter(k=>document.querySelector('.ci[data-k="'+k+'"]')?.classList.contains('on')).length;
+  const confTag='\n['+CLBLS.filter((_,i)=>document.querySelector('.ci[data-k="'+CKEYS[i]+'"]')?.classList.contains('on')).map(l=>'OK '+l).join('|')+']';
+
+  const trades_to_save=[];
+  for(let n=1;n<=3;n++){
+    const en=document.getElementById('me-entry-'+n).value;
+    if(!en)continue; // skip empty entries
+    const sl=document.getElementById('me-sl-'+n).value;
+    const ex=document.getElementById('me-exit-'+n).value;
+    const etime=document.getElementById('me-etime-'+n).value;
+    const xtime=document.getElementById('me-xtime-'+n).value;
+    const lots=parseFloat(document.getElementById('me-lots-'+n).value)||0.01;
+    const result=document.getElementById('me-result-'+n).value;
+    const dur=calcDuration(etime,xtime);
+    // Calculate pnl
+    const enf=parseFloat(en);const exf=ex?parseFloat(ex):null;
+    let pnl=0;
+    if(exf){const diff=dir==='Long'?(exf-enf):(enf-exf);pnl=Math.round(diff*lots*100*100)/100;}
+    if(result==='Loss'&&pnl>0)pnl=-pnl;
+    if(result==='Win'&&pnl<0)pnl=-pnl;
+    if(result==='BE')pnl=0;
+    const metaTag=buildMetaTag(setupId,String(n),emotion,exec,unexec,disc);
+    const notes=metaTag+(rawNotes?'\n'+rawNotes:'')+confTag;
+    trades_to_save.push({
+      user_id:CU.id,
+      trade_date:date,session,timeframe:tf,direction:dir,
+      entry:enf,
+      stop_loss:sl?parseFloat(sl):null,
+      exit_price:exf,take_profit:exf,
+      lot_size:lots,
+      entry_time:etime||null,exit_time:xtime||null,
+      trade_duration:dur||null,
+      result,pnl,notes,
+      confluence_score:confScore
+    });
+  }
+  if(!trades_to_save.length){flash('err','No valid entries to save.');btn.disabled=false;btn.textContent='SAVE ALL 3 ENTRIES';return;}
+  const{data,error}=await DB.from('trades').insert(trades_to_save);
+  if(error){flash('err','Save failed: '+error.message);btn.disabled=false;btn.textContent='SAVE ALL 3 ENTRIES';return;}
+  trades=[...(data||[]),...trades];
+  renderDash();renderHist();renderStats();
+  resetForm();
+  setLogMode('single');
+  flash('ok',trades_to_save.length+' entries saved successfully!');
+  btn.disabled=false;btn.textContent='SAVE ALL 3 ENTRIES';
+};
+
 // -- EMOTION SELECTOR --
 window.selectEmotion=function(btn){
   document.querySelectorAll('#emotion-btns .ebtn').forEach(b=>b.classList.remove('on'));
@@ -1075,6 +1281,16 @@ function resetForm(){
   document.querySelectorAll('#disc-stars .dstar').forEach((s,i)=>{s.style.color='#C9A84C'});
   document.getElementById('disc-label').textContent='5 — Fully disciplined';
   document.getElementById('f-pnl').className='';
+  // Reset multi-entry rows
+  for(let n=1;n<=3;n++){
+    ['me-entry-','me-exit-','me-sl-'].forEach(p=>{const el=document.getElementById(p+n);if(el)el.value='';});
+    const pl=document.getElementById('me-pnl-'+n);if(pl){pl.textContent='—';pl.style.color='#555';}
+    const rl=document.getElementById('me-result-'+n);if(rl)rl.value='Win';
+    const et=document.getElementById('me-etime-'+n);if(et)et.value='';
+    const xt=document.getElementById('me-xtime-'+n);if(xt)xt.value='';
+    const lt=document.getElementById('me-lots-'+n);if(lt)lt.value='0.01';
+  }
+  const tot=document.getElementById('me-total-pnl');if(tot){tot.textContent='—';tot.style.color='#555';}
   document.getElementById('pnl-hint').textContent='Enter exit price + lots to auto-calculate';
   document.getElementById('dur-preview').style.display='none';
   CKEYS.forEach(k=>{const cb=document.getElementById('cb-'+k);if(cb)cb.checked=false;const ci=document.getElementById('ci-'+k);if(ci)ci.classList.remove('on')});
