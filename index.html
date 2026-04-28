@@ -236,6 +236,22 @@ select option{background:#181818;color:#E2DDD6}
 .dstar{font-size:22px;cursor:pointer;transition:color .1s;user-select:none;line-height:1;color:#222}
 /* QUICK LOG FAB */
 
+
+/* PASTE PARSER */
+.paste-btn{display:flex;align-items:center;gap:5px;font-size:10px;color:#C9A84C;background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:6px;padding:5px 10px;cursor:pointer;font-family:'DM Mono',monospace;font-weight:600;white-space:nowrap}
+.paste-btn:hover{background:rgba(201,168,76,.12)}
+.paste-panel{background:#0A0A0A;border:1px solid rgba(201,168,76,.2);border-radius:8px;padding:12px;margin-bottom:12px;display:none}
+.paste-panel.open{display:block}
+.paste-panel textarea{width:100%;background:#111;border:1px solid #1C1C1C;border-radius:6px;padding:8px 10px;color:#E2DDD6;font-size:11px;font-family:'DM Mono',monospace;resize:vertical;min-height:80px;outline:none}
+.paste-panel textarea:focus{border-color:rgba(201,168,76,.3)}
+.paste-panel textarea::placeholder{color:#333}
+.paste-actions{display:flex;gap:6px;margin-top:7px}
+.paste-parse-btn{flex:1;padding:7px;background:linear-gradient(135deg,#C9A84C,#E8C97A);color:#000;border:none;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:'DM Mono',monospace}
+.paste-clear-btn{padding:7px 12px;background:transparent;color:#444;border:1px solid #1C1C1C;border-radius:6px;font-size:11px;cursor:pointer}
+.paste-result{font-size:10px;font-family:'DM Mono',monospace;margin-top:6px;padding:6px 8px;border-radius:5px;display:none}
+.paste-result.ok{background:#0A1C0F;border:1px solid #1A5C2A;color:#6EE7A0;display:block}
+.paste-result.err{background:#1C0A0A;border:1px solid #5C1A1A;color:#F87171;display:block}
+
 /* MULTI-ENTRY LOG */
 .log-mode-toggle{display:flex;gap:0;background:#141414;border-radius:8px;padding:3px;margin-bottom:14px}
 .lmtab{flex:1;padding:7px;text-align:center;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;color:#333;border:none;background:transparent;font-family:'DM Sans',sans-serif}
@@ -452,7 +468,20 @@ select option{background:#181818;color:#E2DDD6}
 
         <!-- SINGLE ENTRY SECTION -->
         <div id="single-entry-section">
-        <div class="slabel" style="color:#C9A84C;margin-bottom:8px">Price & Time</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span class="slabel" style="margin-bottom:0;color:#C9A84C">Price & Time</span>
+          <button type="button" class="paste-btn" onclick="togglePastePanel('single')">📋 Paste MT5</button>
+        </div>
+        <!-- PASTE PANEL SINGLE -->
+        <div class="paste-panel" id="paste-panel-single">
+          <div class="slabel" style="margin-bottom:5px">Paste MT5 trade text below</div>
+          <textarea id="paste-text-single" placeholder="XAUUSDm, sell 0.04&#10;4 693.676 → 4 688.181&#10;2026.04.28 01:01:24&#10;21.98"></textarea>
+          <div class="paste-actions">
+            <button class="paste-parse-btn" onclick="parseMT5('single')">⚡ AUTO-FILL</button>
+            <button class="paste-clear-btn" onclick="clearPastePanel('single')">Clear</button>
+          </div>
+          <div class="paste-result" id="paste-result-single"></div>
+        </div>
         <div class="fg">
           <div class="fld"><label>Entry Price</label><input type="number" id="f-entry" placeholder="3280.50" oninput="autoCalc()"></div>
           <div class="fld"><label>Entry Time</label><input type="time" id="f-etime"></div>
@@ -484,7 +513,19 @@ select option{background:#181818;color:#E2DDD6}
           <div class="me-row">
             <div class="me-row-hdr">
               <span class="me-entry-lbl">Entry 1</span>
-              <span class="me-pnl" id="me-pnl-1" style="color:#555">—</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="me-pnl" id="me-pnl-1" style="color:#555">—</span>
+                <button type="button" class="paste-btn" style="font-size:9px;padding:3px 7px" onclick="togglePastePanel('me1')">📋 Paste</button>
+              </div>
+            </div>
+            <!-- PASTE PANEL ENTRY 1 -->
+            <div class="paste-panel" id="paste-panel-me1">
+              <textarea id="paste-text-me1" placeholder="XAUUSDm, sell 0.04&#10;4 693.676 → 4 688.181&#10;2026.04.28 01:01:24&#10;21.98" style="min-height:70px"></textarea>
+              <div class="paste-actions">
+                <button class="paste-parse-btn" onclick="parseMT5('me1')">⚡ AUTO-FILL</button>
+                <button class="paste-clear-btn" onclick="clearPastePanel('me1')">Clear</button>
+              </div>
+              <div class="paste-result" id="paste-result-me1"></div>
             </div>
             <div class="me-grid">
               <div class="fld"><label>Entry Price</label><input type="number" id="me-entry-1" step="0.001" oninput="meCalc(1)"></div>
@@ -502,7 +543,19 @@ select option{background:#181818;color:#E2DDD6}
           <div class="me-row">
             <div class="me-row-hdr">
               <span class="me-entry-lbl">Entry 2</span>
-              <span class="me-pnl" id="me-pnl-2" style="color:#555">—</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="me-pnl" id="me-pnl-2" style="color:#555">—</span>
+                <button type="button" class="paste-btn" style="font-size:9px;padding:3px 7px" onclick="togglePastePanel('me2')">📋 Paste</button>
+              </div>
+            </div>
+            <!-- PASTE PANEL ENTRY 2 -->
+            <div class="paste-panel" id="paste-panel-me2">
+              <textarea id="paste-text-me2" placeholder="XAUUSDm, sell 0.04&#10;4 693.676 → 4 688.181&#10;2026.04.28 01:01:24&#10;21.98" style="min-height:70px"></textarea>
+              <div class="paste-actions">
+                <button class="paste-parse-btn" onclick="parseMT5('me2')">⚡ AUTO-FILL</button>
+                <button class="paste-clear-btn" onclick="clearPastePanel('me2')">Clear</button>
+              </div>
+              <div class="paste-result" id="paste-result-me2"></div>
             </div>
             <div class="me-grid">
               <div class="fld"><label>Entry Price</label><input type="number" id="me-entry-2" step="0.001" oninput="meCalc(2)"></div>
@@ -520,7 +573,19 @@ select option{background:#181818;color:#E2DDD6}
           <div class="me-row">
             <div class="me-row-hdr">
               <span class="me-entry-lbl">Entry 3</span>
-              <span class="me-pnl" id="me-pnl-3" style="color:#555">—</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="me-pnl" id="me-pnl-3" style="color:#555">—</span>
+                <button type="button" class="paste-btn" style="font-size:9px;padding:3px 7px" onclick="togglePastePanel('me3')">📋 Paste</button>
+              </div>
+            </div>
+            <!-- PASTE PANEL ENTRY 3 -->
+            <div class="paste-panel" id="paste-panel-me3">
+              <textarea id="paste-text-me3" placeholder="XAUUSDm, sell 0.04&#10;4 693.676 → 4 688.181&#10;2026.04.28 01:01:24&#10;21.98" style="min-height:70px"></textarea>
+              <div class="paste-actions">
+                <button class="paste-parse-btn" onclick="parseMT5('me3')">⚡ AUTO-FILL</button>
+                <button class="paste-clear-btn" onclick="clearPastePanel('me3')">Clear</button>
+              </div>
+              <div class="paste-result" id="paste-result-me3"></div>
             </div>
             <div class="me-grid">
               <div class="fld"><label>Entry Price</label><input type="number" id="me-entry-3" step="0.001" oninput="meCalc(3)"></div>
@@ -1024,6 +1089,129 @@ window.selectEditDisc=function(star){
   document.getElementById('e-disc').value=val;
   document.getElementById('e-disc-label').textContent=val+' — '+DISC_LBLS[val];
   document.querySelectorAll('#e-disc-stars .dstar').forEach((s,i)=>{s.style.color=i<val?'#C9A84C':'#222'});
+};
+
+
+// ── PASTE MT5 PARSER ──────────────────────────────────
+window.togglePastePanel=function(id){
+  const panel=document.getElementById('paste-panel-'+id);
+  if(panel)panel.classList.toggle('open');
+};
+window.clearPastePanel=function(id){
+  const ta=document.getElementById('paste-text-'+id);
+  const res=document.getElementById('paste-result-'+id);
+  if(ta)ta.value='';
+  if(res){res.className='paste-result';res.textContent='';}
+};
+window.parseMT5=function(target){
+  const ta=document.getElementById('paste-text-'+target);
+  const resEl=document.getElementById('paste-result-'+target);
+  if(!ta||!resEl)return;
+  const raw=ta.value.trim();
+  if(!raw){resEl.className='paste-result err';resEl.textContent='Nothing to parse — paste your MT5 trade text first.';return;}
+
+  try{
+    // ── Parse direction & lots ──
+    // Format: "XAUUSDm, sell 0.04" or "XAUUSDm, buy 0.04"
+    const dirMatch=raw.match(/,\s*(buy|sell)\s+([\d.]+)/i);
+    if(!dirMatch)throw new Error('Could not find direction (buy/sell) and lots');
+    const direction=dirMatch[1].toLowerCase()==='buy'?'Long':'Short';
+    const lots=parseFloat(dirMatch[2]);
+
+    // ── Parse prices ──
+    // Format: "4 693.676 → 4 688.181" (spaces in numbers)
+    const priceMatch=raw.match(/([\d\s]+\.[\d]+)\s*[→\->→]+\s*([\d\s]+\.[\d]+)/);
+    if(!priceMatch)throw new Error('Could not find entry → exit prices');
+    const entry=parseFloat(priceMatch[1].replace(/\s/g,''));
+    const exit=parseFloat(priceMatch[2].replace(/\s/g,''));
+
+    // ── Parse date & time ──
+    // Format: "2026.04.28 01:01:24"
+    const dtMatch=raw.match(/(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})/);
+    let date='',timeIn='';
+    if(dtMatch){
+      date=dtMatch[1]+'-'+dtMatch[2]+'-'+dtMatch[3];
+      timeIn=dtMatch[4]+':'+dtMatch[5];
+    }
+
+    // ── Parse P&L ──
+    // Last number in text (could be positive or negative)
+    const pnlMatch=raw.match(/(-?[\d.]+)\s*$/m);
+    let pnl=pnlMatch?parseFloat(pnlMatch[1]):null;
+
+    // ── Determine result ──
+    const diff=direction==='Long'?(exit-entry):(entry-exit);
+    let result=diff>0?'Win':diff<0?'Loss':'BE';
+    if(pnl!==null){result=pnl>0?'Win':pnl<0?'Loss':'BE';pnl=Math.abs(pnl)*(pnl<0?-1:1);}
+
+    // ── Fill fields based on target ──
+    if(target==='single'){
+      // Single entry form
+      const setVal=(id,v)=>{const el=document.getElementById(id);if(el&&v!==null&&v!=='')el.value=v;};
+      setVal('f-entry',entry);
+      setVal('f-exit',exit);
+      setVal('f-date',date);
+      setVal('f-etime',timeIn);
+      setVal('f-lots',lots);
+      if(date)setVal('f-date',date);
+      // Set direction
+      const dirEl=document.getElementById('f-dir');
+      if(dirEl)dirEl.value=direction;
+      // Set session based on time
+      if(timeIn){
+        const hr=parseInt(timeIn.split(':')[0]);
+        const sessEl=document.getElementById('f-sess');
+        if(sessEl)sessEl.value=(hr>=13&&hr<22)?'NY':'Asia';
+      }
+      // Trigger autoCalc
+      if(typeof autoCalc==='function')autoCalc();
+    } else if(target==='ql'){
+      // Quick Log modal
+      const setVal=(id,v)=>{const el=document.getElementById(id);if(el&&v!==null&&v!=='')el.value=v;};
+      setVal('ql-entry',entry);
+      setVal('ql-exit',exit);
+      setVal('ql-sl',''); // SL not in MT5 text
+      setVal('ql-lots',lots);
+      setVal('ql-date',date||new Date().toISOString().split('T')[0]);
+      // Direction
+      const dirEl=document.getElementById('ql-dir');
+      if(dirEl)dirEl.value=direction;
+      // Session
+      if(timeIn){
+        const hr=parseInt(timeIn.split(':')[0]);
+        const sessEl=document.getElementById('ql-sess');
+        if(sessEl)sessEl.value=(hr>=13&&hr<22)?'NY':'Asia';
+      }
+      if(typeof qlCalc==='function')qlCalc();
+    } else if(target.startsWith('me')){
+      // Multi-entry rows
+      const n=target.replace('me','');
+      const setVal=(id,v)=>{const el=document.getElementById(id);if(el&&v!==null&&v!=='')el.value=v;};
+      setVal('me-entry-'+n,entry);
+      setVal('me-exit-'+n,exit);
+      setVal('me-lots-'+n,lots);
+      setVal('me-etime-'+n,timeIn);
+      setVal('me-result-'+n,result);
+      // Direction — set global direction field
+      const dirEl=document.getElementById('f-dir');
+      if(dirEl&&dirEl.value==='Long'||dirEl.value==='Short'){}else if(dirEl)dirEl.value=direction;
+      if(typeof meCalc==='function')meCalc(parseInt(n));
+    }
+
+    // ── Show success ──
+    const summary=direction+' '+lots+' lot | '+entry+' → '+exit+(pnl!==null?' | '+(pnl>=0?'+':'')+pnl.toFixed(2):'');
+    resEl.className='paste-result ok';
+    resEl.textContent='✓ Filled: '+summary;
+    // Close panel after 1.5s
+    setTimeout(()=>{
+      const panel=document.getElementById('paste-panel-'+target);
+      if(panel)panel.classList.remove('open');
+    },1500);
+
+  }catch(e){
+    resEl.className='paste-result err';
+    resEl.textContent='Parse error: '+e.message;
+  }
 };
 
 // -- LOG MODE --
@@ -2290,6 +2478,15 @@ window.deleteRule=async function(id){
     <button class="mclose" onclick="closeModal('m-quick')">&#215;</button>
     <div class="modal-title">&#9889; Quick Log</div>
     <div class="modal-sub">Capture the trade now &mdash; fill full details later from History.</div>
+    <button type="button" class="paste-btn" style="margin-bottom:10px;width:100%;justify-content:center" onclick="togglePastePanel('ql')">📋 Paste MT5 Trade</button>
+    <div class="paste-panel" id="paste-panel-ql">
+      <textarea id="paste-text-ql" placeholder="XAUUSDm, sell 0.04&#10;4 693.676 → 4 688.181&#10;2026.04.28 01:01:24&#10;21.98" style="min-height:70px"></textarea>
+      <div class="paste-actions">
+        <button class="paste-parse-btn" onclick="parseMT5('ql')">⚡ AUTO-FILL</button>
+        <button class="paste-clear-btn" onclick="clearPastePanel('ql')">Clear</button>
+      </div>
+      <div class="paste-result" id="paste-result-ql"></div>
+    </div>
     <div class="fg">
       <div class="fld"><label>Date</label><input type="date" id="ql-date"></div>
       <div class="fld"><label>Session</label><select id="ql-sess"><option>NY</option><option>Asia</option></select></div>
