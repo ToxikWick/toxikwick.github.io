@@ -1108,80 +1108,92 @@ window.parseMT5=function(target){
   const resEl=document.getElementById('paste-result-'+target);
   if(!ta||!resEl)return;
   const raw=ta.value.trim();
-  if(!raw){resEl.className='paste-result err';resEl.textContent='Nothing to parse — type your MT5 trade text first.';return;}
+  if(!raw){resEl.className='paste-result err';resEl.textContent='Nothing to parse — paste your MT5 trade text first.';return;}
+
   try{
-    // Direction & lots
+    // ── Direction & lots ──
     const dirMatch=raw.match(/,\s*(buy|sell)\s+([\d.]+)/i);
-    if(!dirMatch)throw new Error('Could not find buy/sell and lots');
+    if(!dirMatch)throw new Error('Could not find direction (buy/sell) and lots');
     const direction=dirMatch[1].toLowerCase()==='buy'?'Long':'Short';
     const lots=parseFloat(dirMatch[2]);
 
-    // Entry → Exit prices (handles spaces in numbers)
-    const priceMatch=raw.match(/([\d][\d\s]*\.[\d]+)\s*[→>]+\s*([\d][\d\s]*\.[\d]+)/);
+    // ── Prices: use [\d ]+ (digit + space only, NOT \s) to stop at newlines ──
+    // Handles MT5 format: "4 689.040 → 4 688.328"
+    const priceMatch=raw.match(/([\d ]+\.[\d]+)[ ]*[→>]+[ ]*([\d ]+\.[\d]+)/);
     if(!priceMatch)throw new Error('Could not find entry → exit prices');
-    const entry=parseFloat(priceMatch[1].replace(/\s+/g,''));
-    const exit=parseFloat(priceMatch[2].replace(/\s+/g,''));
+    const entry=parseFloat(priceMatch[1].replace(/ /g,''));
+    const exit=parseFloat(priceMatch[2].replace(/ /g,''));
 
-    // SL — "S / L:    4 687.144"
+    // ── SL: handles "SL: 4 687.144" and "S / L: 4 687.144" ──
     let sl=null;
-    const slRaw=raw.match(/S\s*\/\s*L\s*:?\s+([\d][\d\s]*\.[\d]+)/i);
-    if(slRaw)sl=parseFloat(slRaw[1].replace(/\s+/g,''));
+    const slRaw=raw.match(/S(?:\s*\/\s*L|L)\s*:?\s*([\d ]+\.[\d]+)/i);
+    if(slRaw)sl=parseFloat(slRaw[1].replace(/ /g,''));
 
-    // All datetimes in text
+    // ── Datetimes ──
+    function parseWAT(y,mo,d,h,mi){
+      let hr=parseInt(h)+1;if(hr>=24)hr-=24;
+      return{date:y+'-'+mo+'-'+d,time:String(hr).padStart(2,'0')+':'+mi};
+    }
     const allDates=[];
     const dtRe=/(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})/g;
     let dm;
     while((dm=dtRe.exec(raw))!==null){
-      let hr=parseInt(dm[4])+1; // +1 Nigeria WAT
-      if(hr>=24)hr-=24;
-      allDates.push({date:dm[1]+'-'+dm[2]+'-'+dm[3],time:String(hr).padStart(2,'0')+':'+dm[5]});
+      allDates.push({idx:dm.index,...parseWAT(dm[1],dm[2],dm[3],dm[4],dm[5])});
     }
-
-    // Open: = entry time
     let date='',timeIn='',timeOut='';
+    const entryMatch=raw.match(/Entry\s*:\s*(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})/i);
+    const exitMatch=raw.match(/Exit\s*:\s*(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})/i);
     const openMatch=raw.match(/Open\s*:?\s*(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})/i);
-    if(openMatch){
-      date=openMatch[1]+'-'+openMatch[2]+'-'+openMatch[3];
-      let hr=parseInt(openMatch[4])+1;if(hr>=24)hr-=24;
-      timeIn=String(hr).padStart(2,'0')+':'+openMatch[5];
-      // Close time = first datetime at top of MT5 record
-      if(allDates.length>0){timeOut=allDates[0].time;}
+    if(entryMatch&&exitMatch){
+      const eIn=parseWAT(entryMatch[1],entryMatch[2],entryMatch[3],entryMatch[4],entryMatch[5]);
+      const eOut=parseWAT(exitMatch[1],exitMatch[2],exitMatch[3],exitMatch[4],exitMatch[5]);
+      date=eIn.date;timeIn=eIn.time;timeOut=eOut.time;
+    } else if(openMatch){
+      const p=parseWAT(openMatch[1],openMatch[2],openMatch[3],openMatch[4],openMatch[5]);
+      date=p.date;timeIn=p.time;
+      const openIdx=raw.search(/Open\s*:/i);
+      const closeDate=allDates.find(d=>d.idx<openIdx);
+      if(closeDate)timeOut=closeDate.time;
     } else if(allDates.length>0){
       date=allDates[0].date;timeIn=allDates[0].time;
       if(allDates.length>1)timeOut=allDates[allDates.length-1].time;
     }
 
-    // P&L
-    const allNums=raw.match(/-?[\d]+\.[\d]{2}/g);
-    let pnl=allNums?parseFloat(allNums[allNums.length-1]):null;
-    // Exclude prices from pnl candidates (prices are large numbers)
-    if(pnl&&Math.abs(pnl)>1000)pnl=null;
+    // ── P&L: find on price line first, then strip swap/commission lines and take last number ──
+    let pnl=null;
+    const priceLine=raw.match(/([\d ]+\.[\d]+)[ ]*[→>]+[ ]*([\d ]+\.[\d]+)\s+([-]?[\d]+\.[\d]+)/);
+    if(priceLine){pnl=parseFloat(priceLine[3]);}
+    if(pnl===null){
+      const stripped=raw.replace(/(?:Swap|Commission)\s*:.*$/gim,'');
+      const allNums=[...stripped.matchAll(/-?[\d]+\.[\d]{2}/g)].map(m=>parseFloat(m[0]));
+      for(let i=allNums.length-1;i>=0;i--){if(Math.abs(allNums[i])<1000){pnl=allNums[i];break;}}
+    }
 
-    // Result
-    let result;
-    if(pnl!==null)result=pnl>0?'Win':pnl<0?'Loss':'BE';
-    else{const diff=direction==='Long'?(exit-entry):(entry-exit);result=diff>0?'Win':diff<0?'Loss':'BE';}
+    // ── Result ──
+    const diff=direction==='Long'?(exit-entry):(entry-exit);
+    let result=pnl!==null?(pnl>0?'Win':pnl<0?'Loss':'BE'):(diff>0?'Win':diff<0?'Loss':'BE');
 
-    // Fill fields
+    // ── Session from entry time ──
+    function getSession(t){if(!t)return'Asia';const hr=parseInt(t.split(':')[0]);return(hr>=13&&hr<22)?'NY':'Asia';}
+
+    // ── Fill fields ──
+    const sv=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null&&v!=='')el.value=v;};
     if(target==='single'){
-      const sv=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null&&v!=='')el.value=v;};
       sv('f-entry',entry);sv('f-exit',exit);sv('f-date',date);
       sv('f-etime',timeIn);sv('f-xtime',timeOut);sv('f-lots',lots);
       if(sl)sv('f-sl',sl);
       const dirEl=document.getElementById('f-dir');if(dirEl)dirEl.value=direction;
-      if(timeIn){const hr=parseInt(timeIn);const sEl=document.getElementById('f-sess');if(sEl)sEl.value=(hr>=13&&hr<22)?'NY':'Asia';}
+      const sEl=document.getElementById('f-sess');if(sEl)sEl.value=getSession(timeIn);
       if(typeof autoCalc==='function')autoCalc();
     } else if(target==='ql'){
-      const sv=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null&&v!=='')el.value=v;};
       sv('ql-entry',entry);sv('ql-exit',exit);sv('ql-lots',lots);
       sv('ql-date',date||new Date().toISOString().split('T')[0]);
       if(sl)sv('ql-sl',sl);
       const dirEl=document.getElementById('ql-dir');if(dirEl)dirEl.value=direction;
-      if(timeIn){const hr=parseInt(timeIn);const sEl=document.getElementById('ql-sess');if(sEl)sEl.value=(hr>=13&&hr<22)?'NY':'Asia';}
+      const sEl=document.getElementById('ql-sess');if(sEl)sEl.value=getSession(timeIn);
       if(typeof qlCalc==='function')qlCalc();
     } else if(target.startsWith('me')){
       const n=target.replace('me','');
-      const sv=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null&&v!=='')el.value=v;};
       sv('me-entry-'+n,entry);sv('me-exit-'+n,exit);sv('me-lots-'+n,lots);
       sv('me-etime-'+n,timeIn);sv('me-xtime-'+n,timeOut);
       if(sl)sv('me-sl-'+n,sl);
@@ -1190,143 +1202,22 @@ window.parseMT5=function(target){
       if(typeof meCalc==='function')meCalc(parseInt(n));
     }
 
-    // Success
+    // ── Success summary ──
     const filled=[];
-    filled.push(direction+' '+lots+'lot');
+    filled.push(direction+' '+lots+' lot');
     filled.push(entry+' \u2192 '+exit);
     if(sl)filled.push('SL '+sl);
     if(timeIn)filled.push('In '+timeIn);
     if(timeOut)filled.push('Out '+timeOut);
     if(pnl!==null)filled.push((pnl>=0?'+':'')+pnl.toFixed(2));
     resEl.className='paste-result ok';
-    resEl.textContent='\u2713 '+filled.join(' | ');
+    resEl.textContent='\u2713 Filled: '+filled.join(' | ');
     setTimeout(()=>{const p=document.getElementById('paste-panel-'+target);if(p)p.classList.remove('open');},2000);
   }catch(e){
     resEl.className='paste-result err';
     resEl.textContent='Error: '+e.message;
   }
 };
-window.togglePastePanel=function(id){
-  const panel=document.getElementById('paste-panel-'+id);
-  if(panel)panel.classList.toggle('open');
-};
-window.clearPastePanel=function(id){
-  const ta=document.getElementById('paste-text-'+id);
-  const res=document.getElementById('paste-result-'+id);
-  if(ta)ta.value='';
-  if(res){res.className='paste-result';res.textContent='';}
-};
-window.parseMT5=function(target){
-  const ta=document.getElementById('paste-text-'+target);
-  const resEl=document.getElementById('paste-result-'+target);
-  if(!ta||!resEl)return;
-  const raw=ta.value.trim();
-  if(!raw){resEl.className='paste-result err';resEl.textContent='Nothing to parse — paste your MT5 trade text first.';return;}
-
-  try{
-    // ── Parse direction & lots ──
-    // Format: "XAUUSDm, sell 0.04" or "XAUUSDm, buy 0.04"
-    const dirMatch=raw.match(/,\s*(buy|sell)\s+([\d.]+)/i);
-    if(!dirMatch)throw new Error('Could not find direction (buy/sell) and lots');
-    const direction=dirMatch[1].toLowerCase()==='buy'?'Long':'Short';
-    const lots=parseFloat(dirMatch[2]);
-
-    // ── Parse prices ──
-    // Format: "4 693.676 → 4 688.181" (spaces in numbers)
-    const priceMatch=raw.match(/([\d\s]+\.[\d]+)\s*[→\->→]+\s*([\d\s]+\.[\d]+)/);
-    if(!priceMatch)throw new Error('Could not find entry → exit prices');
-    const entry=parseFloat(priceMatch[1].replace(/\s/g,''));
-    const exit=parseFloat(priceMatch[2].replace(/\s/g,''));
-
-    // ── Parse date & time ──
-    // Format: "2026.04.28 01:01:24"
-    const dtMatch=raw.match(/(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})/);
-    let date='',timeIn='';
-    if(dtMatch){
-      date=dtMatch[1]+'-'+dtMatch[2]+'-'+dtMatch[3];
-      timeIn=dtMatch[4]+':'+dtMatch[5];
-    }
-
-    // ── Parse P&L ──
-    // Last number in text (could be positive or negative)
-    const pnlMatch=raw.match(/(-?[\d.]+)\s*$/m);
-    let pnl=pnlMatch?parseFloat(pnlMatch[1]):null;
-
-    // ── Determine result ──
-    const diff=direction==='Long'?(exit-entry):(entry-exit);
-    let result=diff>0?'Win':diff<0?'Loss':'BE';
-    if(pnl!==null){result=pnl>0?'Win':pnl<0?'Loss':'BE';pnl=Math.abs(pnl)*(pnl<0?-1:1);}
-
-    // ── Fill fields based on target ──
-    if(target==='single'){
-      // Single entry form
-      const setVal=(id,v)=>{const el=document.getElementById(id);if(el&&v!==null&&v!=='')el.value=v;};
-      setVal('f-entry',entry);
-      setVal('f-exit',exit);
-      setVal('f-date',date);
-      setVal('f-etime',timeIn);
-      setVal('f-lots',lots);
-      if(date)setVal('f-date',date);
-      // Set direction
-      const dirEl=document.getElementById('f-dir');
-      if(dirEl)dirEl.value=direction;
-      // Set session based on time
-      if(timeIn){
-        const hr=parseInt(timeIn.split(':')[0]);
-        const sessEl=document.getElementById('f-sess');
-        if(sessEl)sessEl.value=(hr>=13&&hr<22)?'NY':'Asia';
-      }
-      // Trigger autoCalc
-      if(typeof autoCalc==='function')autoCalc();
-    } else if(target==='ql'){
-      // Quick Log modal
-      const setVal=(id,v)=>{const el=document.getElementById(id);if(el&&v!==null&&v!=='')el.value=v;};
-      setVal('ql-entry',entry);
-      setVal('ql-exit',exit);
-      setVal('ql-sl',''); // SL not in MT5 text
-      setVal('ql-lots',lots);
-      setVal('ql-date',date||new Date().toISOString().split('T')[0]);
-      // Direction
-      const dirEl=document.getElementById('ql-dir');
-      if(dirEl)dirEl.value=direction;
-      // Session
-      if(timeIn){
-        const hr=parseInt(timeIn.split(':')[0]);
-        const sessEl=document.getElementById('ql-sess');
-        if(sessEl)sessEl.value=(hr>=13&&hr<22)?'NY':'Asia';
-      }
-      if(typeof qlCalc==='function')qlCalc();
-    } else if(target.startsWith('me')){
-      // Multi-entry rows
-      const n=target.replace('me','');
-      const setVal=(id,v)=>{const el=document.getElementById(id);if(el&&v!==null&&v!=='')el.value=v;};
-      setVal('me-entry-'+n,entry);
-      setVal('me-exit-'+n,exit);
-      setVal('me-lots-'+n,lots);
-      setVal('me-etime-'+n,timeIn);
-      setVal('me-result-'+n,result);
-      // Direction — set global direction field
-      const dirEl=document.getElementById('f-dir');
-      if(dirEl&&dirEl.value==='Long'||dirEl.value==='Short'){}else if(dirEl)dirEl.value=direction;
-      if(typeof meCalc==='function')meCalc(parseInt(n));
-    }
-
-    // ── Show success ──
-    const summary=direction+' '+lots+' lot | '+entry+' → '+exit+(pnl!==null?' | '+(pnl>=0?'+':'')+pnl.toFixed(2):'');
-    resEl.className='paste-result ok';
-    resEl.textContent='✓ Filled: '+summary;
-    // Close panel after 1.5s
-    setTimeout(()=>{
-      const panel=document.getElementById('paste-panel-'+target);
-      if(panel)panel.classList.remove('open');
-    },1500);
-
-  }catch(e){
-    resEl.className='paste-result err';
-    resEl.textContent='Parse error: '+e.message;
-  }
-};
-
 // -- LOG MODE --
 let logMode='single';
 window.setLogMode=function(mode){
