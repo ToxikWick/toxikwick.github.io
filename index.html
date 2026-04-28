@@ -1108,6 +1108,119 @@ window.parseMT5=function(target){
   const resEl=document.getElementById('paste-result-'+target);
   if(!ta||!resEl)return;
   const raw=ta.value.trim();
+  if(!raw){resEl.className='paste-result err';resEl.textContent='Nothing to parse — type your MT5 trade text first.';return;}
+  try{
+    // Direction & lots
+    const dirMatch=raw.match(/,\s*(buy|sell)\s+([\d.]+)/i);
+    if(!dirMatch)throw new Error('Could not find buy/sell and lots');
+    const direction=dirMatch[1].toLowerCase()==='buy'?'Long':'Short';
+    const lots=parseFloat(dirMatch[2]);
+
+    // Entry → Exit prices (handles spaces in numbers)
+    const priceMatch=raw.match(/([\d][\d\s]*\.[\d]+)\s*[→>]+\s*([\d][\d\s]*\.[\d]+)/);
+    if(!priceMatch)throw new Error('Could not find entry → exit prices');
+    const entry=parseFloat(priceMatch[1].replace(/\s+/g,''));
+    const exit=parseFloat(priceMatch[2].replace(/\s+/g,''));
+
+    // SL — "S / L:    4 687.144"
+    let sl=null;
+    const slRaw=raw.match(/S\s*\/\s*L\s*:?\s+([\d][\d\s]*\.[\d]+)/i);
+    if(slRaw)sl=parseFloat(slRaw[1].replace(/\s+/g,''));
+
+    // All datetimes in text
+    const allDates=[];
+    const dtRe=/(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})/g;
+    let dm;
+    while((dm=dtRe.exec(raw))!==null){
+      let hr=parseInt(dm[4])+1; // +1 Nigeria WAT
+      if(hr>=24)hr-=24;
+      allDates.push({date:dm[1]+'-'+dm[2]+'-'+dm[3],time:String(hr).padStart(2,'0')+':'+dm[5]});
+    }
+
+    // Open: = entry time
+    let date='',timeIn='',timeOut='';
+    const openMatch=raw.match(/Open\s*:?\s*(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})/i);
+    if(openMatch){
+      date=openMatch[1]+'-'+openMatch[2]+'-'+openMatch[3];
+      let hr=parseInt(openMatch[4])+1;if(hr>=24)hr-=24;
+      timeIn=String(hr).padStart(2,'0')+':'+openMatch[5];
+      // Close time = first datetime at top of MT5 record
+      if(allDates.length>0){timeOut=allDates[0].time;}
+    } else if(allDates.length>0){
+      date=allDates[0].date;timeIn=allDates[0].time;
+      if(allDates.length>1)timeOut=allDates[allDates.length-1].time;
+    }
+
+    // P&L
+    const allNums=raw.match(/-?[\d]+\.[\d]{2}/g);
+    let pnl=allNums?parseFloat(allNums[allNums.length-1]):null;
+    // Exclude prices from pnl candidates (prices are large numbers)
+    if(pnl&&Math.abs(pnl)>1000)pnl=null;
+
+    // Result
+    let result;
+    if(pnl!==null)result=pnl>0?'Win':pnl<0?'Loss':'BE';
+    else{const diff=direction==='Long'?(exit-entry):(entry-exit);result=diff>0?'Win':diff<0?'Loss':'BE';}
+
+    // Fill fields
+    if(target==='single'){
+      const sv=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null&&v!=='')el.value=v;};
+      sv('f-entry',entry);sv('f-exit',exit);sv('f-date',date);
+      sv('f-etime',timeIn);sv('f-xtime',timeOut);sv('f-lots',lots);
+      if(sl)sv('f-sl',sl);
+      const dirEl=document.getElementById('f-dir');if(dirEl)dirEl.value=direction;
+      if(timeIn){const hr=parseInt(timeIn);const sEl=document.getElementById('f-sess');if(sEl)sEl.value=(hr>=13&&hr<22)?'NY':'Asia';}
+      if(typeof autoCalc==='function')autoCalc();
+    } else if(target==='ql'){
+      const sv=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null&&v!=='')el.value=v;};
+      sv('ql-entry',entry);sv('ql-exit',exit);sv('ql-lots',lots);
+      sv('ql-date',date||new Date().toISOString().split('T')[0]);
+      if(sl)sv('ql-sl',sl);
+      const dirEl=document.getElementById('ql-dir');if(dirEl)dirEl.value=direction;
+      if(timeIn){const hr=parseInt(timeIn);const sEl=document.getElementById('ql-sess');if(sEl)sEl.value=(hr>=13&&hr<22)?'NY':'Asia';}
+      if(typeof qlCalc==='function')qlCalc();
+    } else if(target.startsWith('me')){
+      const n=target.replace('me','');
+      const sv=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null&&v!=='')el.value=v;};
+      sv('me-entry-'+n,entry);sv('me-exit-'+n,exit);sv('me-lots-'+n,lots);
+      sv('me-etime-'+n,timeIn);sv('me-xtime-'+n,timeOut);
+      if(sl)sv('me-sl-'+n,sl);
+      sv('me-result-'+n,result);
+      const dirEl=document.getElementById('f-dir');if(dirEl)dirEl.value=direction;
+      if(typeof meCalc==='function')meCalc(parseInt(n));
+    }
+
+    // Success
+    const filled=[];
+    filled.push(direction+' '+lots+'lot');
+    filled.push(entry+' \u2192 '+exit);
+    if(sl)filled.push('SL '+sl);
+    if(timeIn)filled.push('In '+timeIn);
+    if(timeOut)filled.push('Out '+timeOut);
+    if(pnl!==null)filled.push((pnl>=0?'+':'')+pnl.toFixed(2));
+    resEl.className='paste-result ok';
+    resEl.textContent='\u2713 '+filled.join(' | ');
+    setTimeout(()=>{const p=document.getElementById('paste-panel-'+target);if(p)p.classList.remove('open');},2000);
+  }catch(e){
+    resEl.className='paste-result err';
+    resEl.textContent='Error: '+e.message;
+  }
+};
+window.togglePastePanel=function(id){
+  const panel=document.getElementById('paste-panel-'+id);
+  if(panel)panel.classList.toggle('open');
+};
+window.clearPastePanel=function(id){
+  const ta=document.getElementById('paste-text-'+id);
+  const res=document.getElementById('paste-result-'+id);
+  if(ta)ta.value='';
+  if(res){res.className='paste-result';res.textContent='';}
+};
+window.parseMT5=function(target){
+  const ta=document.getElementById('paste-text-'+target);
+  const resEl=document.getElementById('paste-result-'+target);
+  if(!ta||!resEl)return;
+  const raw=ta.value.trim();
   if(!raw){resEl.className='paste-result err';resEl.textContent='Nothing to parse — paste your MT5 trade text first.';return;}
 
   try{
