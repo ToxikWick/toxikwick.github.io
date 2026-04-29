@@ -1198,7 +1198,9 @@ window.parseMT5=function(target){
       sv('me-etime-'+n,timeIn);sv('me-xtime-'+n,timeOut);
       if(sl)sv('me-sl-'+n,sl);
       sv('me-result-'+n,result);
+      if(date)sv('f-date',date);
       const dirEl=document.getElementById('f-dir');if(dirEl)dirEl.value=direction;
+      const sEl2=document.getElementById('f-sess');if(sEl2&&timeIn)sEl2.value=getSession(timeIn);
       if(typeof meCalc==='function')meCalc(parseInt(n));
     }
 
@@ -1809,21 +1811,28 @@ function multiTradeCard(group){
     (meta0.emotion?'<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:#111;color:'+emotionColor(meta0.emotion)+';border:1px solid #1E1E1E">🧠 '+meta0.emotion+'</span>':'')+
     (meta0.disc&&meta0.disc!==5?'<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:#111;border:1px solid #1C1C1C">'+discStars(meta0.disc)+'</span>':'')+
     '<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:'+(meta0.exec>=80?'rgba(45,184,124,.07)':meta0.exec>=60?'rgba(201,168,76,.07)':'rgba(224,82,82,.07)')+';color:'+(meta0.exec>=80?'#2DB87C':meta0.exec>=60?'#C9A84C':'#E05252')+';border:1px solid '+(meta0.exec>=80?'rgba(45,184,124,.2)':meta0.exec>=60?'rgba(201,168,76,.2)':'rgba(224,82,82,.2)')+';font-family:DM Mono,monospace">⚡ '+meta0.exec+'% exec</span>'+
-  '</div>';
+  '</div>'+
+  (meta0.exec<100&&meta0.unexec?'<div style="font-size:10px;color:#555;background:rgba(224,82,82,.04);border:1px solid rgba(224,82,82,.1);border-radius:5px;padding:5px 9px;margin-bottom:7px"><span style="color:#E05252;font-weight:600">Unexecuted '+(100-meta0.exec)+'%:</span> '+meta0.unexec+'</div>':'');
 
+  const gid='grp'+Math.random().toString(36).slice(2,7);
   return '<div class="hcard" style="border-left:3px solid '+col+'33">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
+    // ── HEADER ROW (always visible, tap to collapse/expand) ──
+    '<div onclick="(function(){var b=document.getElementById(\'gb-'+gid+'\');var a=document.getElementById(\'ga-'+gid+'\');var open=b.style.display===\'none\';b.style.display=open?\'block\':\'none\';a.textContent=open?\'▴\':\'▾\';})();" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;cursor:pointer">'+
       '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">'+sessChip(first.session)+dirChip(first.direction)+'<span style="font-size:9px;color:#888;font-family:DM Mono,monospace">'+first.timeframe+'</span>'+dur0+'</div>'+
       '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'+
         '<span style="font-size:13px;font-weight:700;color:'+pc(roundedPnl)+';font-family:DM Mono,monospace">'+fp(roundedPnl)+'</span>'+
         '<span class="badge" style="background:'+col+'22;color:'+col+';border:1px solid '+col+'44">'+overallResult+'</span>'+
+        '<span id="ga-'+gid+'" style="color:#444;font-size:11px">▾</span>'+
       '</div>'+
     '</div>'+
     '<div style="font-weight:600;font-size:11px;color:#888;margin-bottom:6px">'+first.trade_date+'</div>'+
     metaChips+
-    entryRows+
-    (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
-    confBadges+
+    // ── COLLAPSIBLE BODY ──
+    '<div id="gb-'+gid+'" style="display:none">'+
+      entryRows+
+      (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
+      confBadges+
+    '</div>'+
   '</div>';
 }
 
