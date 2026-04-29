@@ -675,9 +675,9 @@ select option{background:#181818;color:#E2DDD6}
     <!-- ANALYTICS -->
     <div id="tab-stats" class="tc">
       <div class="ptabs" id="a-ptabs">
-        <button class="ptab on" data-p="today">Today</button>
+        <button class="ptab" data-p="today">Today</button>
         <button class="ptab" data-p="week">This Week</button>
-        <button class="ptab" data-p="month">This Month</button>
+        <button class="ptab on" data-p="month">This Month</button>
         <button class="ptab" data-p="year">This Year</button>
         <button class="ptab" data-p="all">All Time</button>
       </div>
@@ -727,6 +727,14 @@ select option{background:#181818;color:#E2DDD6}
       <div class="card" style="margin-top:7px">
         <div class="sec-title">🧠 Mindset Impact</div>
         <div id="a-emotion">—</div>
+      </div>
+      <div class="g2" style="margin-top:7px">
+        <div class="card"><div class="sec-title">📈 Long vs Short</div><div id="a-dir">—</div></div>
+        <div class="card"><div class="sec-title">📅 Day of Week</div><div id="a-dow">—</div></div>
+      </div>
+      <div class="card" style="margin-top:7px">
+        <div class="sec-title">⚖ Risk / Reward per Setup</div>
+        <div id="a-rrr-detail">—</div>
       </div>
     </div>
 
@@ -883,7 +891,7 @@ const DB={
 };
 
 let CU=null,CP=null,trades=[];
-let dPer='today',hPer='daily',aPer='today';
+let dPer='today',hPer='daily',aPer='month';
 
 // -- UPDATED CONFLUENCE (6 items) --
 const CKEYS=['smc_presence','liquidity_sweep','sr_level','round_number','rejection_candle','continuation_candle','entry_sl_set'];
@@ -902,6 +910,7 @@ document.getElementById('main-nav').addEventListener('click',e=>{
   b.classList.add('on');closeMenu();
   if(t==='archive')renderArchive();
   if(t==='rules')renderRules();
+  if(t==='stats')renderStats();
 });
 function wirePtabs(id,cb){
   document.getElementById(id).addEventListener('click',e=>{
@@ -2129,16 +2138,150 @@ function renderStats(){
       }).join('');
     }
   }
+  // ── Direction breakdown (Long vs Short) ──
+  const dirEl=document.getElementById('a-dir');
+  if(dirEl){
+    const dirMap={Long:{tot:0,w:0,pnl:0},Short:{tot:0,w:0,pnl:0}};
+    f.forEach(t=>{const d=t.direction;if(dirMap[d]){dirMap[d].tot++;if(t.result==='Win')dirMap[d].w++;dirMap[d].pnl+=parseFloat(t.pnl)||0;}});
+    dirEl.innerHTML=Object.entries(dirMap).filter(([_,d])=>d.tot>0).map(([dir,d])=>{
+      const wr=d.tot?(d.w/d.tot*100):0;const wrCol=wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252';
+      const dirCol=dir==='Long'?'#2DB87C':'#E05252';
+      return '<div style="margin-bottom:8px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'+
+          '<span style="font-size:12px;font-weight:700;color:'+dirCol+'">'+dir+'</span>'+
+          '<span style="font-size:11px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+wr.toFixed(0)+'% WR</span>'+
+        '</div>'+
+        '<div style="font-size:10px;color:#444;font-family:DM Mono,monospace;margin-bottom:4px">'+d.tot+'T · <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div>'+
+        '<div style="background:#131313;border-radius:99px;height:5px;overflow:hidden">'+
+          '<div style="width:'+Math.min(wr,100)+'%;height:100%;border-radius:99px;background:'+wrCol+';transition:width .5s"></div>'+
+        '</div></div>';
+    }).join('')||'<span class="muted" style="font-size:12px">No data</span>';
+  }
+
+  // ── Day of week breakdown ──
+  const dowEl=document.getElementById('a-dow');
+  if(dowEl){
+    const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const dowMap={};
+    f.forEach(t=>{
+      const dow=new Date(t.trade_date+'T12:00:00').getDay();
+      const k=days[dow];
+      if(!dowMap[k])dowMap[k]={tot:0,w:0,pnl:0,ord:dow};
+      dowMap[k].tot++;if(t.result==='Win')dowMap[k].w++;dowMap[k].pnl+=parseFloat(t.pnl)||0;
+    });
+    dowEl.innerHTML=Object.entries(dowMap).sort((a,b)=>a[1].ord-b[1].ord).map(([day,d])=>{
+      const wr=d.tot?(d.w/d.tot*100):0;const wrCol=wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252';
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #181818">'+
+        '<span style="font-size:11px;font-weight:600;color:#E2DDD6">'+day+'</span>'+
+        '<div style="text-align:right">'+
+          '<div style="font-size:11px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+wr.toFixed(0)+'% WR</div>'+
+          '<div style="font-size:9px;color:#444;font-family:DM Mono,monospace">'+d.tot+'T · <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div>'+
+        '</div></div>';
+    }).join('')||'<span class="muted" style="font-size:12px">No data</span>';
+  }
+
+  // ── RRR per setup (grouped by date+session+direction) ──
+  const rrrEl=document.getElementById('a-rrr-detail');
+  if(rrrEl){
+    // Group multi-entry trades to calculate actual RRR
+    const groups=groupTradesForDisplay(f);
+    const rrrRows=[];
+    groups.forEach(item=>{
+      const tArr=item.type==='group'?item.trades:[item.trade];
+      const totalPnl=tArr.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0);
+      // Use SL risk from first trade with SL
+      const anchor=tArr.find(t=>t.stop_loss&&t.entry);
+      if(!anchor)return;
+      const risk=Math.abs(anchor.entry-anchor.stop_loss)*((anchor.lot_size||0.01)*100);
+      if(risk<=0)return;
+      const rrr=totalPnl/risk;
+      const result=totalPnl>0?'Win':totalPnl<0?'Loss':'BE';
+      rrrRows.push({date:tArr[0].trade_date,session:tArr[0].session,direction:tArr[0].direction,entries:tArr.length,pnl:totalPnl,rrr,result});
+    });
+    if(!rrrRows.length){rrrEl.innerHTML='<span class="muted" style="font-size:12px">Log trades with SL to see RRR data</span>';}
+    else{
+      const avgRRR=rrrRows.reduce((s,r)=>s+r.rrr,0)/rrrRows.length;
+      const winRRR=rrrRows.filter(r=>r.result==='Win');
+      const avgWinRRR=winRRR.length?winRRR.reduce((s,r)=>s+r.rrr,0)/winRRR.length:0;
+      rrrEl.innerHTML='<div style="display:flex;gap:8px;margin-bottom:10px">'+
+        '<div style="flex:1;background:#111;border:1px solid #1C1C1C;border-radius:7px;padding:9px;text-align:center">'+
+          '<div style="font-size:9px;color:#444;font-family:DM Mono,monospace;margin-bottom:2px">AVG RRR</div>'+
+          '<div style="font-size:16px;font-weight:700;color:'+(avgRRR>=1?'#2DB87C':avgRRR>=0?'#C9A84C':'#E05252')+';font-family:DM Mono,monospace">'+avgRRR.toFixed(2)+'R</div>'+
+        '</div>'+
+        '<div style="flex:1;background:#111;border:1px solid #1C1C1C;border-radius:7px;padding:9px;text-align:center">'+
+          '<div style="font-size:9px;color:#444;font-family:DM Mono,monospace;margin-bottom:2px">WIN AVG RRR</div>'+
+          '<div style="font-size:16px;font-weight:700;color:#2DB87C;font-family:DM Mono,monospace">'+avgWinRRR.toFixed(2)+'R</div>'+
+        '</div>'+
+        '<div style="flex:1;background:#111;border:1px solid #1C1C1C;border-radius:7px;padding:9px;text-align:center">'+
+          '<div style="font-size:9px;color:#444;font-family:DM Mono,monospace;margin-bottom:2px">SETUPS</div>'+
+          '<div style="font-size:16px;font-weight:700;color:#E2DDD6;font-family:DM Mono,monospace">'+rrrRows.length+'</div>'+
+        '</div>'+
+      '</div>'+
+      rrrRows.slice(0,8).map(r=>{
+        const rCol=r.rrr>=1?'#2DB87C':r.rrr>=0?'#C9A84C':'#E05252';
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #181818">'+
+          '<div><div style="font-size:10px;color:#888">'+r.date+' · '+r.session+'</div>'+
+          '<div style="font-size:9px;color:#444;font-family:DM Mono,monospace">'+r.direction+' · '+r.entries+'E</div></div>'+
+          '<div style="text-align:right">'+
+            '<div style="font-size:12px;font-weight:700;color:'+rCol+';font-family:DM Mono,monospace">'+r.rrr.toFixed(2)+'R</div>'+
+            '<div style="font-size:9px;color:'+pc(r.pnl)+';font-family:DM Mono,monospace">'+fp(r.pnl)+'</div>'+
+          '</div></div>';
+      }).join('');
+    }
+  }
+
   // Duration by session
+  // ── Duration summary table ──
   const durMap={};
   f.filter(t=>t.trade_duration&&t.session).forEach(t=>{
-    const key=t.session+' · '+t.result;
-    if(!durMap[key])durMap[key]={durs:[],col:gc(t.result)};
-    durMap[key].durs.push(t.trade_duration);
+    const key=t.session+'|'+t.result;
+    if(!durMap[key])durMap[key]={session:t.session,result:t.result,mins:[],col:gc(t.result)};
+    const m=toMins(t.trade_duration);
+    if(m!==null)durMap[key].mins.push(m);
   });
-  document.getElementById('a-dur').innerHTML=Object.entries(durMap).length?
-    Object.entries(durMap).map(([k,v])=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #181818"><span style="font-size:11px;color:#555">'+k+'</span><div style="text-align:right">'+v.durs.map(d=>'<span class="dur-tag">'+d+'</span>').join(' ')+'</div></div>').join(''):
-    '<span class="muted" style="font-size:12px">No duration data yet. Enter entry & exit times when logging.</span>';
+  const durOrder=['NY|Win','NY|Loss','Asia|Win','Asia|Loss'];
+  const durRows=durOrder.filter(k=>durMap[k]&&durMap[k].mins.length).map(k=>{
+    const v=durMap[k];
+    const avg=v.mins.reduce((a,b)=>a+b,0)/v.mins.length;
+    const min=Math.min(...v.mins);
+    const max=Math.max(...v.mins);
+    const col=v.col;
+    const sessCol=v.session==='NY'?'#C9A84C':'#5B9BD4';
+    return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;align-items:center;padding:8px 0;border-bottom:1px solid #181818">'+
+      '<div>'+
+        '<span style="font-size:10px;font-weight:700;color:'+sessCol+'">'+v.session+'</span>'+
+        ' <span style="font-size:10px;font-weight:700;color:'+col+'">'+v.result+'</span>'+
+        '<div style="font-size:9px;color:#333;font-family:DM Mono,monospace;margin-top:1px">'+v.mins.length+' trade'+(v.mins.length!==1?'s':'')+'</div>'+
+      '</div>'+
+      '<div style="text-align:center"><div style="font-size:9px;color:#444;font-family:DM Mono,monospace">AVG</div><div style="font-size:13px;font-weight:700;color:#E8C97A;font-family:DM Mono,monospace">'+fmtMins(avg)+'</div></div>'+
+      '<div style="text-align:center"><div style="font-size:9px;color:#444;font-family:DM Mono,monospace">MIN</div><div style="font-size:12px;font-weight:600;color:#555;font-family:DM Mono,monospace">'+fmtMins(min)+'</div></div>'+
+      '<div style="text-align:center"><div style="font-size:9px;color:#444;font-family:DM Mono,monospace">MAX</div><div style="font-size:12px;font-weight:600;color:#777;font-family:DM Mono,monospace">'+fmtMins(max)+'</div></div>'+
+    '</div>';
+  });
+  // Insight line: compare avg win vs avg loss hold time
+  let insight='';
+  ['NY','Asia'].forEach(sess=>{
+    const wKey=sess+'|Win';const lKey=sess+'|Loss';
+    if(durMap[wKey]&&durMap[lKey]&&durMap[wKey].mins.length&&durMap[lKey].mins.length){
+      const avgW=durMap[wKey].mins.reduce((a,b)=>a+b,0)/durMap[wKey].mins.length;
+      const avgL=durMap[lKey].mins.reduce((a,b)=>a+b,0)/durMap[lKey].mins.length;
+      const diff=avgW-avgL;
+      if(Math.abs(diff)>=1){
+        const col=diff>0?'#2DB87C':'#E05252';
+        const msg=diff>0
+          ?sess+' wins held <strong style="color:#2DB87C">'+fmtMins(Math.abs(diff))+'</strong> longer than losses — patience is paying off'
+          :sess+' losses held <strong style="color:#E05252">'+fmtMins(Math.abs(diff))+'</strong> longer than wins — you may be holding losers too long';
+        insight+='<div style="font-size:10px;color:#555;line-height:1.6;padding:6px 0;border-bottom:1px solid #181818">'+msg+'</div>';
+      }
+    }
+  });
+  document.getElementById('a-dur').innerHTML=durRows.length?
+    (insight?'<div style="margin-bottom:6px">'+insight+'</div>':'')+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;padding:0 0 5px;border-bottom:1px solid #222;margin-bottom:2px">'+
+      ['','AVG','MIN','MAX'].map(h=>'<div style="font-size:8px;color:#333;text-align:'+(h?'center':'left')+';letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace">'+h+'</div>').join('')+
+    '</div>'+
+    durRows.join(''):
+    '<span class="muted" style="font-size:12px">No duration data yet — enter entry & exit times when logging.</span>';
 }
 
 // -- PATIENCE TRACKER --
