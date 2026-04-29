@@ -2076,14 +2076,9 @@ function renderStats(){
   }
 
   // ── PERIOD STATS — filtered by selected period ──
-  const sorted=[...f].filter(t=>t.result!=='BE').sort((a,b)=>{
-    const da=(a.trade_date||'')+(a.entry_time||'00:00');
-    const db=(b.trade_date||'')+(b.entry_time||'00:00');
-    return da.localeCompare(db);
-  });
   let bestWin=0,worstLoss=0,curRun=0,curType='';
   const winRuns=[],lossRuns=[];
-  sorted.forEach(t=>{
+  periodSorted.forEach(t=>{
     if(t.result===curType){curRun++;}
     else{
       if(curType==='Win')winRuns.push(curRun);
