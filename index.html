@@ -2110,44 +2110,44 @@ function renderStats(){
     strEl.innerHTML=
       // ── LIVE STREAK (always all-time) ──
       '<div style="text-align:center;padding:10px 0 14px;border-bottom:1px solid #1E1E1E;margin-bottom:12px">'+
-        '<div style="font-size:9px;color:#333;letter-spacing:.15em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:6px">Live Current Streak · All Time</div>'+
+        '<div style="font-size:9px;color:#666;letter-spacing:.15em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:6px">Live Current Streak · All Time</div>'+
         (allSorted.length?
           '<div style="font-size:28px;margin-bottom:4px">'+ico+'</div>'+
           '<div style="font-size:26px;font-weight:700;color:'+curCol+';font-family:DM Mono,monospace">'+cs+' '+(ct==='Win'?'Win':'Loss')+(cs!==1?'s':'')+'</div>'+
-          '<div style="font-size:10px;color:#444;margin-top:3px">in a row right now</div>'+
+          '<div style="font-size:10px;color:#777;margin-top:3px">in a row right now</div>'+
           (ct==='Loss'&&cs>=3?'<div style="font-size:10px;color:#E05252;margin-top:6px;padding:5px 10px;background:rgba(224,82,82,.06);border-radius:5px;display:inline-block">⚠ Stop and review before next trade</div>':'')+
           (ct==='Win'&&cs>=5?'<div style="font-size:10px;color:#2DB87C;margin-top:6px;padding:5px 10px;background:rgba(45,184,124,.06);border-radius:5px;display:inline-block">🔥 Stay disciplined, keep executing</div>':''):
-          '<div style="color:#333;font-size:12px">No trades yet</div>'
+          '<div style="color:#666;font-size:12px">No trades yet</div>'
         )+
       '</div>'+
       // ── PERIOD STATS ──
-      '<div style="font-size:9px;color:#333;letter-spacing:.15em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:8px;text-align:center">Run History · '+pLabel+'</div>'+
+      '<div style="font-size:9px;color:#666;letter-spacing:.15em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:8px;text-align:center">Run History · '+pLabel+'</div>'+
       (periodSorted.length?
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
-          '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-left:2px solid #2DB87C33;border-radius:7px;padding:10px;text-align:center">'+
-            '<div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Best Win Run</div>'+
+          '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-left:2px solid #2DB87C55;border-radius:7px;padding:10px;text-align:center">'+
+            '<div style="font-size:9px;color:#777;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Best Win Run</div>'+
             '<div style="font-size:22px;font-weight:700;color:#2DB87C;font-family:DM Mono,monospace">'+bestWin+'</div>'+
-            '<div style="font-size:9px;color:#2DB87C44;font-family:DM Mono,monospace">consecutive</div>'+
+            '<div style="font-size:9px;color:#2DB87C;font-family:DM Mono,monospace">consecutive</div>'+
           '</div>'+
-          '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-left:2px solid #E0525233;border-radius:7px;padding:10px;text-align:center">'+
-            '<div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Worst Loss Run</div>'+
+          '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-left:2px solid #E0525255;border-radius:7px;padding:10px;text-align:center">'+
+            '<div style="font-size:9px;color:#777;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Worst Loss Run</div>'+
             '<div style="font-size:22px;font-weight:700;color:#E05252;font-family:DM Mono,monospace">'+worstLoss+'</div>'+
-            '<div style="font-size:9px;color:#E0525244;font-family:DM Mono,monospace">consecutive</div>'+
+            '<div style="font-size:9px;color:#E05252;font-family:DM Mono,monospace">consecutive</div>'+
           '</div>'+
         '</div>'+
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
           '<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:7px;padding:8px;text-align:center">'+
-            '<div style="font-size:9px;color:#333;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:2px">Avg Win Run</div>'+
-            '<div style="font-size:16px;font-weight:700;color:#2DB87C99;font-family:DM Mono,monospace">'+avgWinRun.toFixed(1)+'</div>'+
-            '<div style="font-size:9px;color:#333;font-family:DM Mono,monospace">trades avg</div>'+
+            '<div style="font-size:9px;color:#666;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:2px">Avg Win Run</div>'+
+            '<div style="font-size:16px;font-weight:700;color:#2DB87C;font-family:DM Mono,monospace">'+avgWinRun.toFixed(1)+'</div>'+
+            '<div style="font-size:9px;color:#666;font-family:DM Mono,monospace">trades avg</div>'+
           '</div>'+
           '<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:7px;padding:8px;text-align:center">'+
-            '<div style="font-size:9px;color:#333;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:2px">Avg Loss Run</div>'+
-            '<div style="font-size:16px;font-weight:700;color:#E0525299;font-family:DM Mono,monospace">'+avgLossRun.toFixed(1)+'</div>'+
-            '<div style="font-size:9px;color:#333;font-family:DM Mono,monospace">trades avg</div>'+
+            '<div style="font-size:9px;color:#666;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:2px">Avg Loss Run</div>'+
+            '<div style="font-size:16px;font-weight:700;color:#E05252;font-family:DM Mono,monospace">'+avgLossRun.toFixed(1)+'</div>'+
+            '<div style="font-size:9px;color:#666;font-family:DM Mono,monospace">trades avg</div>'+
           '</div>'+
         '</div>':
-        '<div style="text-align:center;padding:10px;color:#333;font-size:12px">No trades in '+pLabel+'</div>'
+        '<div style="text-align:center;padding:10px;color:#666;font-size:12px">No trades in '+pLabel+'</div>'
       );
   }
   // Sessions
