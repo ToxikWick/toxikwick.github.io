@@ -681,6 +681,8 @@ select option{background:#181818;color:#E2DDD6}
         <button class="ptab" data-p="year">This Year</button>
         <button class="ptab" data-p="all">All Time</button>
       </div>
+      <!-- Period summary bar -->
+      <div id="a-summary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:7px"></div>
       <div class="g2" style="margin-bottom:7px">
         <div class="card" style="text-align:center;padding:14px 8px">
           <div style="font-size:24px;margin-bottom:3px" id="a-streak-ico">—</div>
@@ -2027,6 +2029,26 @@ function renderHist(){
 // -- RENDER ANALYTICS --
 function renderStats(){
   const f=fPer(trades,aPer);
+  // ── Period summary bar ──
+  const sumEl=document.getElementById('a-summary');
+  if(sumEl){
+    if(!f.length){
+      sumEl.innerHTML='';
+    } else {
+      const s=calcS(f);
+      const wrCol=wc(s.wr);
+      const items=[
+        {lbl:'TRADES',val:s.total,col:'#E2DDD6'},
+        {lbl:'WIN RATE',val:(s.cl>0?s.wr.toFixed(1)+'%':'-'),col:wrCol},
+        {lbl:'P&L',val:fp(s.tp),col:pc(s.tp)},
+        {lbl:'PROFIT FACTOR',val:s.pf===999?'∞':s.pf.toFixed(2),col:s.pf>=1?'#2DB87C':'#E05252'},
+      ];
+      sumEl.innerHTML=items.map(i=>'<div style="background:#111;border:1px solid #1C1C1C;border-radius:7px;padding:9px 8px;text-align:center">'+
+        '<div style="font-size:8px;color:#333;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">'+i.lbl+'</div>'+
+        '<div style="font-size:14px;font-weight:700;color:'+i.col+';font-family:DM Mono,monospace">'+i.val+'</div>'+
+      '</div>').join('');
+    }
+  }
   if(!f.length){
     ['a-best','a-worst','a-avgw','a-avgl','a-rrr','a-dd','a-pf','a-streak','a-bstreak'].forEach(id=>setEl(id,'-'));
     setEl('a-streak-ico','-');
@@ -2275,13 +2297,22 @@ function renderStats(){
       }
     }
   });
+  // Count trades missing duration data
+  const totalF=f.length;
+  const withDur=f.filter(t=>t.trade_duration&&t.session).length;
+  const missingDur=totalF-withDur;
+  const missingNote=missingDur>0?
+    '<div style="font-size:10px;color:#444;font-family:DM Mono,monospace;padding:6px 0;border-bottom:1px solid #181818;margin-bottom:6px">'+
+      '⚠ <strong style="color:#555">'+missingDur+'</strong> of '+totalF+' trades have no entry/exit times — log times to see full data'+
+    '</div>':'';
   document.getElementById('a-dur').innerHTML=durRows.length?
+    missingNote+
     (insight?'<div style="margin-bottom:6px">'+insight+'</div>':'')+
     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;padding:0 0 5px;border-bottom:1px solid #222;margin-bottom:2px">'+
       ['','AVG','MIN','MAX'].map(h=>'<div style="font-size:8px;color:#333;text-align:'+(h?'center':'left')+';letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace">'+h+'</div>').join('')+
     '</div>'+
     durRows.join(''):
-    '<span class="muted" style="font-size:12px">No duration data yet — enter entry & exit times when logging.</span>';
+    missingNote||'<span class="muted" style="font-size:12px">No duration data yet — enter entry & exit times when logging.</span>';
 }
 
 // -- PATIENCE TRACKER --
