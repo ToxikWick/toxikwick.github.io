@@ -2061,24 +2061,26 @@ function renderStats(){
   [...f].reverse().forEach(t=>{run+=parseFloat(t.pnl)||0;if(run>peak)peak=run;const dd=peak-run;if(dd>maxDD)maxDD=dd});
   setEl('a-dd',maxDD>0?'-$'+maxDD.toFixed(2):'$0.00');
   setEl('a-pf',s.pf===999?'∞ Perfect':s.pf.toFixed(2),s.pf===999?'#2DB87C':undefined);
-  // ── Streak (full, period-aware) ──
-  const sorted=[...f].filter(t=>t.result!=='BE').sort((a,b)=>{
-    // Sort by trade_date + entry_time for accurate chronological order
+  // ── LIVE STREAK — always all-time, never filtered ──
+  const allSorted=[...trades].filter(t=>t.result!=='BE').sort((a,b)=>{
     const da=(a.trade_date||'')+(a.entry_time||'00:00');
     const db=(b.trade_date||'')+(b.entry_time||'00:00');
     return da.localeCompare(db);
   });
-
-  // Current streak
   let cs=0,ct='';
-  for(let i=sorted.length-1;i>=0;i--){
-    const r=sorted[i].result;
-    if(i===sorted.length-1){ct=r;cs=1;}
+  for(let i=allSorted.length-1;i>=0;i--){
+    const r=allSorted[i].result;
+    if(i===allSorted.length-1){ct=r;cs=1;}
     else if(r===ct)cs++;
     else break;
   }
 
-  // Best win streak, worst loss streak, avg win run, avg loss run
+  // ── PERIOD STATS — filtered by selected period ──
+  const sorted=[...f].filter(t=>t.result!=='BE').sort((a,b)=>{
+    const da=(a.trade_date||'')+(a.entry_time||'00:00');
+    const db=(b.trade_date||'')+(b.entry_time||'00:00');
+    return da.localeCompare(db);
+  });
   let bestWin=0,worstLoss=0,curRun=0,curType='';
   const winRuns=[],lossRuns=[];
   sorted.forEach(t=>{
@@ -2098,45 +2100,55 @@ function renderStats(){
 
   // Render unified streak card
   const strEl=document.getElementById('a-streak-inner');
-  if(strEl&&sorted.length){
+  if(strEl){
     const ico=ct==='Win'?'🔥':'💀';
     const curCol=ct==='Win'?'#2DB87C':'#E05252';
     const curLabel=ct==='Win'?'Win streak':'Loss streak';
+    // Determine period label
+    const pLabels={today:'Today',week:'This Week',month:'This Month',year:'This Year',all:'All Time'};
+    const pLabel=pLabels[aPer]||'Period';
     strEl.innerHTML=
-      // Current streak — big and prominent
-      '<div style="text-align:center;padding:10px 0 14px;border-bottom:1px solid #181818;margin-bottom:12px">'+
-        '<div style="font-size:28px;margin-bottom:4px">'+ico+'</div>'+
-        '<div style="font-size:11px;color:#444;letter-spacing:.12em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:4px">Current Streak</div>'+
-        '<div style="font-size:26px;font-weight:700;color:'+curCol+';font-family:DM Mono,monospace">'+cs+' '+curLabel+(cs!==1?'s':'')+'</div>'+
-        (ct==='Loss'&&cs>=3?'<div style="font-size:10px;color:#E05252;margin-top:5px;font-family:DM Mono,monospace">⚠ Stop and review your setup</div>':'')+
-        (ct==='Win'&&cs>=5?'<div style="font-size:10px;color:#2DB87C;margin-top:5px;font-family:DM Mono,monospace">🔥 Stay disciplined — don\'t get complacent</div>':'')+
+      // ── LIVE STREAK (always all-time) ──
+      '<div style="text-align:center;padding:10px 0 14px;border-bottom:1px solid #1E1E1E;margin-bottom:12px">'+
+        '<div style="font-size:9px;color:#333;letter-spacing:.15em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:6px">Live Current Streak · All Time</div>'+
+        (allSorted.length?
+          '<div style="font-size:28px;margin-bottom:4px">'+ico+'</div>'+
+          '<div style="font-size:26px;font-weight:700;color:'+curCol+';font-family:DM Mono,monospace">'+cs+' '+(ct==='Win'?'Win':'Loss')+(cs!==1?'s':'')+'</div>'+
+          '<div style="font-size:10px;color:#444;margin-top:3px">in a row right now</div>'+
+          (ct==='Loss'&&cs>=3?'<div style="font-size:10px;color:#E05252;margin-top:6px;padding:5px 10px;background:rgba(224,82,82,.06);border-radius:5px;display:inline-block">⚠ Stop and review before next trade</div>':'')+
+          (ct==='Win'&&cs>=5?'<div style="font-size:10px;color:#2DB87C;margin-top:6px;padding:5px 10px;background:rgba(45,184,124,.06);border-radius:5px;display:inline-block">🔥 Stay disciplined, keep executing</div>':''):
+          '<div style="color:#333;font-size:12px">No trades yet</div>'
+        )+
       '</div>'+
-      // Best / Worst row
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'+
-        '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:7px;padding:10px;text-align:center">'+
-          '<div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Best Win Run</div>'+
-          '<div style="font-size:20px;font-weight:700;color:#2DB87C;font-family:DM Mono,monospace">'+bestWin+'</div>'+
-          '<div style="font-size:9px;color:#333;font-family:DM Mono,monospace">consecutive wins</div>'+
+      // ── PERIOD STATS ──
+      '<div style="font-size:9px;color:#333;letter-spacing:.15em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:8px;text-align:center">Run History · '+pLabel+'</div>'+
+      (periodSorted.length?
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
+          '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-left:2px solid #2DB87C33;border-radius:7px;padding:10px;text-align:center">'+
+            '<div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Best Win Run</div>'+
+            '<div style="font-size:22px;font-weight:700;color:#2DB87C;font-family:DM Mono,monospace">'+bestWin+'</div>'+
+            '<div style="font-size:9px;color:#2DB87C44;font-family:DM Mono,monospace">consecutive</div>'+
+          '</div>'+
+          '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-left:2px solid #E0525233;border-radius:7px;padding:10px;text-align:center">'+
+            '<div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Worst Loss Run</div>'+
+            '<div style="font-size:22px;font-weight:700;color:#E05252;font-family:DM Mono,monospace">'+worstLoss+'</div>'+
+            '<div style="font-size:9px;color:#E0525244;font-family:DM Mono,monospace">consecutive</div>'+
+          '</div>'+
         '</div>'+
-        '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:7px;padding:10px;text-align:center">'+
-          '<div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Worst Loss Run</div>'+
-          '<div style="font-size:20px;font-weight:700;color:#E05252;font-family:DM Mono,monospace">'+worstLoss+'</div>'+
-          '<div style="font-size:9px;color:#333;font-family:DM Mono,monospace">consecutive losses</div>'+
-        '</div>'+
-      '</div>'+
-      // Avg run row
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
-        '<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:7px;padding:8px;text-align:center">'+
-          '<div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:2px">Avg Win Run</div>'+
-          '<div style="font-size:15px;font-weight:700;color:#2DB87C88;font-family:DM Mono,monospace">'+avgWinRun.toFixed(1)+'</div>'+
-        '</div>'+
-        '<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:7px;padding:8px;text-align:center">'+
-          '<div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:2px">Avg Loss Run</div>'+
-          '<div style="font-size:15px;font-weight:700;color:#E0525288;font-family:DM Mono,monospace">'+avgLossRun.toFixed(1)+'</div>'+
-        '</div>'+
-      '</div>';
-  } else if(strEl){
-    strEl.innerHTML='<div style="text-align:center;padding:14px;color:#333;font-size:12px">No trades in this period</div>';
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+          '<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:7px;padding:8px;text-align:center">'+
+            '<div style="font-size:9px;color:#333;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:2px">Avg Win Run</div>'+
+            '<div style="font-size:16px;font-weight:700;color:#2DB87C99;font-family:DM Mono,monospace">'+avgWinRun.toFixed(1)+'</div>'+
+            '<div style="font-size:9px;color:#333;font-family:DM Mono,monospace">trades avg</div>'+
+          '</div>'+
+          '<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:7px;padding:8px;text-align:center">'+
+            '<div style="font-size:9px;color:#333;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:2px">Avg Loss Run</div>'+
+            '<div style="font-size:16px;font-weight:700;color:#E0525299;font-family:DM Mono,monospace">'+avgLossRun.toFixed(1)+'</div>'+
+            '<div style="font-size:9px;color:#333;font-family:DM Mono,monospace">trades avg</div>'+
+          '</div>'+
+        '</div>':
+        '<div style="text-align:center;padding:10px;color:#333;font-size:12px">No trades in '+pLabel+'</div>'
+      );
   }
   // Sessions
   const sess={};f.forEach(t=>{if(!sess[t.session])sess[t.session]={tot:0,w:0,pnl:0,durs:[]};sess[t.session].tot++;if(t.result==='Win')sess[t.session].w++;sess[t.session].pnl+=parseFloat(t.pnl)||0;if(t.trade_duration)sess[t.session].durs.push(t.trade_duration)});
