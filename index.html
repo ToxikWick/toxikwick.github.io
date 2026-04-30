@@ -874,7 +874,9 @@ const DB={
         return fetch(base,{method:'POST',headers:getHeaders(true),body:JSON.stringify(row)}).then(r=>r.json()).then(d=>({data:Array.isArray(d)?d:[d],error:null})).catch(e=>({data:null,error:e}));
       },
       update:function(row,filter){
-        return fetch(base+'?'+filter,{method:'PATCH',headers:getHeaders(true),body:JSON.stringify(row)}).then(r=>r.json()).then(d=>({data:d,error:null})).catch(e=>({data:null,error:e}));
+        return fetch(base+'?'+(filter||''),{method:'PATCH',headers:getHeaders(true),body:JSON.stringify(row)})
+          .then(r=>r.json().then(d=>r.ok?{data:d,error:null}:{data:null,error:d}))
+          .catch(e=>({data:null,error:e}));
       },
       delete:function(filter){
         return fetch(base+'?'+filter,{method:'DELETE',headers:getHeaders()}).then(r=>({data:null,error:null})).catch(e=>({data:null,error:e}));
@@ -2610,8 +2612,10 @@ window.doReset=async function(type){
     const newBal=parseFloat(document.getElementById('reset-bal').value);
     if(isNaN(newBal)||newBal<=0){flash('err','Enter a valid new balance.');return}
     if(!confirm('Archive all current trades and start fresh with $'+newBal.toFixed(2)+'?'))return;
-    await DB.from('trades').update({archived:true},'user_id=eq.'+CU.id+'&archived=eq.false');
-    await DB.from('profiles').update({starting_balance:newBal},'id=eq.'+CU.id);
+    const{error:archErr}=await DB.from('trades').update({archived:true},'user_id=eq.'+CU.id);
+    if(archErr){flash('err','Archive failed — check connection and try again.');return;}
+    const{error:balErr}=await DB.from('profiles').update({starting_balance:newBal},'id=eq.'+CU.id);
+    if(balErr){flash('err','Balance update failed.');return;}
     CP.starting_balance=newBal;
     await loadTrades();renderDash();renderHist();renderStats();renderArchive();
     closeModal('m-settings');flash('ok','New period started! Balance reset to $'+newBal.toFixed(2));
