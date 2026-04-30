@@ -885,7 +885,7 @@ const DB={
   }
 };
 
-let CU=null,CP=null,trades=[];
+let CU=null,CP=null,trades=[],archivePeriods=[];
 let dPer='today',hPer='daily',aPer='month';
 
 // -- UPDATED CONFLUENCE (6 items) --
@@ -990,7 +990,7 @@ async function initApp(user){
   if(CP.role==='admin')document.getElementById('admin-btn').style.display='flex';
   buildConf();
   document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
-  await loadTrades();
+  await loadTrades();await loadArchivePeriods();
   show('app');
   document.getElementById('ql-fab').style.display='flex';
   renderDash();renderHist();renderStats();renderArchive();loadRules();
@@ -1010,6 +1010,10 @@ async function loadTrades(){
   if(error){flash('err','Failed to load trades.');return}
   trades=data||[];
   if(CP.role==='admin')checkUnassigned();
+}
+async function loadArchivePeriods(){
+  const{data,error}=await DB.from('archive_periods').select('*','user_id=eq.'+CU.id+'&order=archived_at.desc');
+  if(!error)archivePeriods=data||[];
 }
 async function checkUnassigned(){
   const{data}=await DB.from('trades').select('id','user_id=is.null');
@@ -2573,18 +2577,32 @@ function renderArchive(){
     const wrC=wc(s.wr);
     const pnlC=pc(s.tp);
     const gid='ag-'+month.replace('-','');
+    // Use snapshot data if available for accurate header display
+    const snap=archivePeriods.find(p=>p.month===month);
+    const snapBal=snap?snap.balance:null;
+    const snapPnl=snap?snap.total_pnl:s.tp;
+    const snapWR=snap?snap.wr:s.wr;
+    const snapWins=snap?snap.wins:s.wins;
+    const snapLosses=snap?snap.losses:s.losses;
+    const snapTotal=snap?snap.trades_count:s.total;
+    const snapPnlC=pc(snapPnl);
+    const snapWRC=wc(snapWR);
 
     html+=`
     <div style="background:#0E0E0E;border:1px solid #1C1C1C;border-radius:12px;margin-bottom:10px;overflow:hidden">
       <!-- Period Header -->
       <div onclick="toggleArchiveGroup('${gid}')" style="padding:16px 16px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:flex-start">
-        <div>
-          <div style="font-size:13px;font-weight:700;margin-bottom:6px"> ${monthName(month)}</div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <div style="font-size:13px;font-weight:700"> ${monthName(month)}</div>
+            ${snap?'<div style="font-size:9px;color:#C9A84C;font-family:DM Mono,monospace;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);border-radius:3px;padding:1px 6px">SNAPSHOT</div>':'<div style="font-size:9px;color:#444;font-family:DM Mono,monospace">no snapshot</div>'}
+          </div>
+          ${snapBal!==null?'<div style="font-size:11px;color:#666;font-family:DM Mono,monospace;margin-bottom:8px">Balance at archive: <span style="color:#E2DDD6;font-weight:700">$'+snapBal.toFixed(2)+'</span></div>':''}
           <div style="display:flex;gap:14px;flex-wrap:wrap">
-            <div><div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace">Trades</div><div style="font-size:14px;font-weight:700;font-family:DM Mono,monospace;color:#666">${s.total}</div></div>
-            <div><div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace">Win Rate</div><div style="font-size:14px;font-weight:700;font-family:DM Mono,monospace;color:${wrC}">${s.cl>0?s.wr.toFixed(0)+'%':'-'}</div></div>
-            <div><div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace">P&L</div><div style="font-size:14px;font-weight:700;font-family:DM Mono,monospace;color:${pnlC}">${fp(s.tp)}</div></div>
-            <div><div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace">W/L</div><div style="font-size:14px;font-weight:700;font-family:DM Mono,monospace;color:#666">${s.wins}/${s.losses}</div></div>
+            <div><div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace">Trades</div><div style="font-size:14px;font-weight:700;font-family:DM Mono,monospace;color:#666">${snapTotal}</div></div>
+            <div><div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace">Win Rate</div><div style="font-size:14px;font-weight:700;font-family:DM Mono,monospace;color:${snapWRC}">${snapWR.toFixed(0)}%</div></div>
+            <div><div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace">P&L</div><div style="font-size:14px;font-weight:700;font-family:DM Mono,monospace;color:${snapPnlC}">${fp(snapPnl)}</div></div>
+            <div><div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace">W/L</div><div style="font-size:14px;font-weight:700;font-family:DM Mono,monospace;color:#666">${snapWins}/${snapLosses}</div></div>
           </div>
         </div>
         <div style="font-size:18px;color:#444;margin-left:8px;flex-shrink:0" id="arr-${gid}">v</div>
@@ -2620,21 +2638,40 @@ window.toggleArchiveGroup=function(id){
 };
 
 window.restoreArchive=async function(month){
-  const balStr=prompt('What was your account balance at the start of that period?\n(Enter the balance to restore to)');
-  if(balStr===null)return; // user cancelled
-  const restoreBal=parseFloat(balStr);
-  if(isNaN(restoreBal)||restoreBal<=0){flash('err','Enter a valid balance to restore.');return;}
-  if(!confirm('Restore all trades from '+month+' back to dashboard with balance $'+restoreBal.toFixed(2)+'?'))return;
+  // Find snapshot for this month
+  const snap=archivePeriods.find(p=>p.month===month);
+  const restoreBal=snap?snap.starting_balance:null;
+  if(!restoreBal){
+    // No snapshot — fall back to manual prompt
+    const balStr=prompt('No saved snapshot found for this period.\nEnter the balance to restore to:');
+    if(balStr===null)return;
+    const manualBal=parseFloat(balStr);
+    if(isNaN(manualBal)||manualBal<=0){flash('err','Enter a valid balance.');return;}
+    if(!confirm('Restore all trades from '+month+' to dashboard?'))return;
+    const ids=trades.filter(t=>t.archived&&t.trade_date&&t.trade_date.startsWith(month)).map(t=>t.id);
+    if(!ids.length){flash('err','No trades found.');return;}
+    const{error}=await DB.from('trades').update({archived:null},'id=in.('+ids.join(',')+')');
+    if(error){flash('err','Restore failed.');return;}
+    await DB.from('profiles').update({starting_balance:manualBal},'id=eq.'+CU.id);
+    CP.starting_balance=manualBal;
+    await loadTrades();await loadArchivePeriods();renderDash();renderHist();renderStats();renderArchive();
+    flash('ok','Restored. Balance set to $'+manualBal.toFixed(2));
+    return;
+  }
+  if(!confirm('Restore '+month+' — '+snap.trades_count+' trades, balance back to $'+restoreBal.toFixed(2)+'?'))return;
   const ids=trades.filter(t=>t.archived&&t.trade_date&&t.trade_date.startsWith(month)).map(t=>t.id);
   if(!ids.length){flash('err','No trades found for that period.');return;}
-  // Single batch call — update all matching trades at once
+  // Restore trades in one batch call
   const{error}=await DB.from('trades').update({archived:null},'id=in.('+ids.join(',')+')');
   if(error){flash('err','Restore failed — check connection and try again.');return;}
-  // Restore balance
+  // Restore starting balance from snapshot
   const{error:balErr}=await DB.from('profiles').update({starting_balance:restoreBal},'id=eq.'+CU.id);
   if(balErr){flash('err','Balance restore failed.');return;}
   CP.starting_balance=restoreBal;
-  await loadTrades();renderDash();renderHist();renderStats();renderArchive();
+  // Delete the snapshot record since period is now active again
+  const{error:snapDelErr}=await DB.from('archive_periods').delete('user_id=eq.'+CU.id+'&month=eq.'+month);
+  if(!snapDelErr)archivePeriods=archivePeriods.filter(p=>p.month!==month);
+  await loadTrades();await loadArchivePeriods();renderDash();renderHist();renderStats();renderArchive();
   flash('ok','Restored '+ids.length+' trades. Balance set to $'+restoreBal.toFixed(2));
 };
 
@@ -2643,10 +2680,13 @@ window.deleteArchive=async function(month){
   if(!confirm('Are you 100% sure? These trades will be gone forever.'))return;
   const ids=trades.filter(t=>t.archived&&t.trade_date&&t.trade_date.startsWith(month)).map(t=>t.id);
   if(!ids.length){flash('err','No trades found for that period.');return;}
-  // Single batch call — delete all matching trades at once
+  // Delete all trades in one batch call
   const{error}=await DB.from('trades').delete('id=in.('+ids.join(',')+')');
   if(error){flash('err','Delete failed — check connection and try again.');return;}
-  await loadTrades();renderDash();renderHist();renderStats();renderArchive();
+  // Delete snapshot record too
+  await DB.from('archive_periods').delete('user_id=eq.'+CU.id+'&month=eq.'+month);
+  archivePeriods=archivePeriods.filter(p=>p.month!==month);
+  await loadTrades();await loadArchivePeriods();renderDash();renderHist();renderStats();renderArchive();
   flash('ok','Deleted '+ids.length+' trades permanently.');
 };
 
@@ -2655,12 +2695,33 @@ window.doReset=async function(type){
     const newBal=parseFloat(document.getElementById('reset-bal').value);
     if(isNaN(newBal)||newBal<=0){flash('err','Enter a valid new balance.');return}
     if(!confirm('Archive all current trades and start fresh with $'+newBal.toFixed(2)+'?'))return;
+    // Snapshot current stats before archiving
+    const activeTrades=trades.filter(t=>!t.archived);
+    const snap=calcS(activeTrades);
+    const currentBal=CP.starting_balance+(snap.tp||0);
+    const month=new Date().toISOString().substring(0,7);
+    // Save snapshot to archive_periods
+    const snapRow={
+      user_id:CU.id,
+      month:month,
+      balance:parseFloat(currentBal.toFixed(2)),
+      starting_balance:parseFloat((CP.starting_balance||0).toFixed(2)),
+      total_pnl:parseFloat((snap.tp||0).toFixed(2)),
+      trades_count:snap.total||0,
+      wins:snap.wins||0,
+      losses:snap.losses||0,
+      wr:parseFloat((snap.wr||0).toFixed(1))
+    };
+    const{error:snapErr}=await DB.from('archive_periods').insert(snapRow);
+    if(snapErr){flash('err','Snapshot save failed — try again.');return;}
+    // Archive all current trades
     const{error:archErr}=await DB.from('trades').update({archived:true},'user_id=eq.'+CU.id);
     if(archErr){flash('err','Archive failed — check connection and try again.');return;}
+    // Set new balance
     const{error:balErr}=await DB.from('profiles').update({starting_balance:newBal},'id=eq.'+CU.id);
     if(balErr){flash('err','Balance update failed.');return;}
     CP.starting_balance=newBal;
-    await loadTrades();renderDash();renderHist();renderStats();renderArchive();
+    await loadTrades();await loadArchivePeriods();renderDash();renderHist();renderStats();renderArchive();
     closeModal('m-settings');flash('ok','New period started! Balance reset to $'+newBal.toFixed(2));
   } else {
     if(!confirm('DELETE ALL your trades permanently? This cannot be undone.'))return;
