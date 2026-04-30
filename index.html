@@ -2127,8 +2127,8 @@ function renderStats(){
         )+
       '</div>'+
       // ── PERIOD STATS ──
-      '<div style="font-size:9px;color:#666;letter-spacing:.15em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:8px;text-align:center">Run History · '+pLabel+'</div>'+
       (periodSorted.length?
+        '<div style="font-size:9px;color:#666;letter-spacing:.15em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:8px;text-align:center">Run History · '+pLabel+'</div>'+
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
           '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-left:2px solid #2DB87C55;border-radius:7px;padding:10px;text-align:center">'+
             '<div style="font-size:9px;color:#777;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Best Win Run</div>'+
@@ -2153,7 +2153,7 @@ function renderStats(){
             '<div style="font-size:9px;color:#666;font-family:DM Mono,monospace">trades avg</div>'+
           '</div>'+
         '</div>':
-        '<div style="text-align:center;padding:10px;color:#666;font-size:12px">No trades in '+pLabel+'</div>'
+        '<div style="text-align:center;padding:12px;color:#555;font-size:11px;font-family:DM Mono,monospace">No trades in '+pLabel+' to calculate run history</div>'
       );
   }
   // Sessions
@@ -2559,26 +2559,42 @@ function renderArchive(){
     return;
   }
 
-  // Group by archive batch - use month/date of trade_date
-  // Since we don't store period labels, group by month
+  // Group by period_id (new system) or month (legacy for old archives)
   const groups={};
   archived.forEach(t=>{
-    const month=t.trade_date.substring(0,7); // e.g. "2026-04"
-    if(!groups[month])groups[month]=[];
-    groups[month].push(t);
+    const key=t.period_id?('pid:'+t.period_id):('mon:'+t.trade_date.substring(0,7));
+    if(!groups[key])groups[key]=[];
+    groups[key].push(t);
   });
 
-  const monthName=m=>{const d=new Date(m+'-01');return d.toLocaleString('default',{month:'long',year:'numeric'})};
+  // Sort groups by most recent first (use earliest trade date in group)
+  const sortedKeys=Object.keys(groups).sort((a,b)=>{
+    const da=groups[a].map(t=>t.trade_date).sort().pop()||'';
+    const db=groups[b].map(t=>t.trade_date).sort().pop()||'';
+    return db.localeCompare(da);
+  });
+
+  // Format a date range label e.g. "Apr 14 – Apr 28, 2026"
+  function dateRangeLabel(arr){
+    const dates=arr.map(t=>t.trade_date).sort();
+    const fmt=d=>{const[y,m,dy]=d.split('-');return new Date(y,m-1,dy).toLocaleDateString('default',{month:'short',day:'numeric'})};
+    const yr=dates[dates.length-1].substring(0,4);
+    if(dates[0]===dates[dates.length-1])return fmt(dates[0])+', '+yr;
+    return fmt(dates[0])+' – '+fmt(dates[dates.length-1])+', '+yr;
+  }
 
   let html='';
-  Object.keys(groups).sort().reverse().forEach((month,gi)=>{
-    const arr=groups[month];
+  sortedKeys.forEach((key,gi)=>{
+    const arr=groups[key];
+    const isPid=key.startsWith('pid:');
+    const periodId=isPid?key.substring(4):null;
+    const legacyMonth=isPid?null:key.substring(4);
     const s=calcS(arr);
-    const wrC=wc(s.wr);
-    const pnlC=pc(s.tp);
-    const gid='ag-'+month.replace('-','');
-    // Use snapshot data if available for accurate header display
-    const snap=archivePeriods.find(p=>p.month===month);
+    const gid='ag-'+gi;
+    // Find snapshot
+    const snap=isPid
+      ?archivePeriods.find(p=>p.period_id===periodId)
+      :archivePeriods.find(p=>p.month===legacyMonth);
     const snapBal=snap?snap.balance:null;
     const snapPnl=snap?snap.total_pnl:s.tp;
     const snapWR=snap?snap.wr:s.wr;
@@ -2587,6 +2603,7 @@ function renderArchive(){
     const snapTotal=snap?snap.trades_count:s.total;
     const snapPnlC=pc(snapPnl);
     const snapWRC=wc(snapWR);
+    const btnId=isPid?periodId:('month__'+legacyMonth);
 
     html+=`
     <div style="background:#0E0E0E;border:1px solid #1C1C1C;border-radius:12px;margin-bottom:10px;overflow:hidden">
@@ -2594,7 +2611,7 @@ function renderArchive(){
       <div onclick="toggleArchiveGroup('${gid}')" style="padding:16px 16px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:flex-start">
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-            <div style="font-size:13px;font-weight:700"> ${monthName(month)}</div>
+            <div style="font-size:13px;font-weight:700">${dateRangeLabel(arr)}</div>
             ${snap?'<div style="font-size:9px;color:#C9A84C;font-family:DM Mono,monospace;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);border-radius:3px;padding:1px 6px">SNAPSHOT</div>':'<div style="font-size:9px;color:#444;font-family:DM Mono,monospace">no snapshot</div>'}
           </div>
           ${snapBal!==null?'<div style="font-size:11px;color:#666;font-family:DM Mono,monospace;margin-bottom:8px">Balance at archive: <span style="color:#E2DDD6;font-weight:700">$'+snapBal.toFixed(2)+'</span></div>':''}
@@ -2619,8 +2636,8 @@ function renderArchive(){
       </div>
       <!-- Restore / Delete buttons -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #252525;background:#0A0A0A">
-        <button onclick="restoreArchive('${month}')" style="padding:13px;background:transparent;border:none;border-right:1px solid #252525;color:#2DB87C;font-size:11px;font-weight:700;font-family:DM Mono,monospace;cursor:pointer;letter-spacing:.05em;width:100%">↩ RESTORE</button>
-        <button onclick="deleteArchive('${month}')" style="padding:13px;background:transparent;border:none;color:#E05252;font-size:11px;font-weight:700;font-family:DM Mono,monospace;cursor:pointer;letter-spacing:.05em;width:100%">🗑 DELETE FOREVER</button>
+        <button onclick="restoreArchive('${btnId}')" style="padding:13px;background:transparent;border:none;border-right:1px solid #252525;color:#2DB87C;font-size:11px;font-weight:700;font-family:DM Mono,monospace;cursor:pointer;letter-spacing:.05em;width:100%">↩ RESTORE</button>
+        <button onclick="deleteArchive('${btnId}')" style="padding:13px;background:transparent;border:none;color:#E05252;font-size:11px;font-weight:700;font-family:DM Mono,monospace;cursor:pointer;letter-spacing:.05em;width:100%">🗑 DELETE FOREVER</button>
       </div>
     </div>`;
   });
@@ -2637,55 +2654,66 @@ window.toggleArchiveGroup=function(id){
   if(arr)arr.textContent=open?'v':'^';
 };
 
-window.restoreArchive=async function(month){
-  // Find snapshot for this month
-  const snap=archivePeriods.find(p=>p.month===month);
+// Helper: get trade ids and snapshot for a btnId (period_id or legacy month)
+function _resolveArchive(btnId){
+  const isPid=!btnId.startsWith('month__');
+  const periodId=isPid?btnId:null;
+  const legacyMonth=isPid?null:btnId.substring(7);
+  let ids,snap;
+  if(isPid){
+    ids=trades.filter(t=>t.archived&&t.period_id===periodId).map(t=>t.id);
+    snap=archivePeriods.find(p=>p.period_id===periodId);
+  } else {
+    ids=trades.filter(t=>t.archived&&!t.period_id&&t.trade_date&&t.trade_date.startsWith(legacyMonth)).map(t=>t.id);
+    snap=archivePeriods.find(p=>p.month===legacyMonth&&!p.period_id);
+  }
+  return{isPid,periodId,legacyMonth,ids,snap};
+}
+
+window.restoreArchive=async function(btnId){
+  const{isPid,periodId,legacyMonth,ids,snap}=_resolveArchive(btnId);
+  if(!ids.length){flash('err','No trades found for that period.');return;}
   const restoreBal=snap?snap.starting_balance:null;
   if(!restoreBal){
-    // No snapshot — fall back to manual prompt
-    const balStr=prompt('No saved snapshot found for this period.\nEnter the balance to restore to:');
+    const balStr=prompt('No saved snapshot found.\nEnter the balance to restore to:');
     if(balStr===null)return;
     const manualBal=parseFloat(balStr);
     if(isNaN(manualBal)||manualBal<=0){flash('err','Enter a valid balance.');return;}
-    if(!confirm('Restore all trades from '+month+' to dashboard?'))return;
-    const ids=trades.filter(t=>t.archived&&t.trade_date&&t.trade_date.startsWith(month)).map(t=>t.id);
-    if(!ids.length){flash('err','No trades found.');return;}
-    const{error}=await DB.from('trades').update({archived:null},'id=in.('+ids.join(',')+')');
-    if(error){flash('err','Restore failed.');return;}
+    if(!confirm('Restore '+ids.length+' trades to dashboard with balance $'+manualBal.toFixed(2)+'?'))return;
+    const{error}=await DB.from('trades').update({archived:null,period_id:null},'id=in.('+ids.join(',')+')');
+    if(error){flash('err','Restore failed — check connection.');return;}
     await DB.from('profiles').update({starting_balance:manualBal},'id=eq.'+CU.id);
     CP.starting_balance=manualBal;
     await loadTrades();await loadArchivePeriods();renderDash();renderHist();renderStats();renderArchive();
-    flash('ok','Restored. Balance set to $'+manualBal.toFixed(2));
+    flash('ok','Restored '+ids.length+' trades. Balance $'+manualBal.toFixed(2));
     return;
   }
-  if(!confirm('Restore '+month+' — '+snap.trades_count+' trades, balance back to $'+restoreBal.toFixed(2)+'?'))return;
-  const ids=trades.filter(t=>t.archived&&t.trade_date&&t.trade_date.startsWith(month)).map(t=>t.id);
-  if(!ids.length){flash('err','No trades found for that period.');return;}
-  // Restore trades in one batch call
-  const{error}=await DB.from('trades').update({archived:null},'id=in.('+ids.join(',')+')');
-  if(error){flash('err','Restore failed — check connection and try again.');return;}
-  // Restore starting balance from snapshot
+  if(!confirm('Restore '+ids.length+' trades — balance back to $'+restoreBal.toFixed(2)+'?'))return;
+  // Restore all trades in one batch call, clear period_id
+  const{error}=await DB.from('trades').update({archived:null,period_id:null},'id=in.('+ids.join(',')+')');
+  if(error){flash('err','Restore failed — check connection.');return;}
+  // Restore starting balance
   const{error:balErr}=await DB.from('profiles').update({starting_balance:restoreBal},'id=eq.'+CU.id);
   if(balErr){flash('err','Balance restore failed.');return;}
   CP.starting_balance=restoreBal;
-  // Delete the snapshot record since period is now active again
-  const{error:snapDelErr}=await DB.from('archive_periods').delete('user_id=eq.'+CU.id+'&month=eq.'+month);
-  if(!snapDelErr)archivePeriods=archivePeriods.filter(p=>p.month!==month);
+  // Delete snapshot record
+  if(isPid)await DB.from('archive_periods').delete('period_id=eq.'+periodId+'&user_id=eq.'+CU.id);
+  else await DB.from('archive_periods').delete('month=eq.'+legacyMonth+'&user_id=eq.'+CU.id);
   await loadTrades();await loadArchivePeriods();renderDash();renderHist();renderStats();renderArchive();
   flash('ok','Restored '+ids.length+' trades. Balance set to $'+restoreBal.toFixed(2));
 };
 
-window.deleteArchive=async function(month){
-  if(!confirm('Permanently delete all trades from '+month+'? This cannot be undone.'))return;
-  if(!confirm('Are you 100% sure? These trades will be gone forever.'))return;
-  const ids=trades.filter(t=>t.archived&&t.trade_date&&t.trade_date.startsWith(month)).map(t=>t.id);
+window.deleteArchive=async function(btnId){
+  const{isPid,periodId,legacyMonth,ids,snap}=_resolveArchive(btnId);
   if(!ids.length){flash('err','No trades found for that period.');return;}
+  if(!confirm('Permanently delete '+ids.length+' trades? This cannot be undone.'))return;
+  if(!confirm('Are you 100% sure? These trades will be gone forever.'))return;
   // Delete all trades in one batch call
   const{error}=await DB.from('trades').delete('id=in.('+ids.join(',')+')');
-  if(error){flash('err','Delete failed — check connection and try again.');return;}
-  // Delete snapshot record too
-  await DB.from('archive_periods').delete('user_id=eq.'+CU.id+'&month=eq.'+month);
-  archivePeriods=archivePeriods.filter(p=>p.month!==month);
+  if(error){flash('err','Delete failed — check connection.');return;}
+  // Delete snapshot record
+  if(isPid)await DB.from('archive_periods').delete('period_id=eq.'+periodId+'&user_id=eq.'+CU.id);
+  else await DB.from('archive_periods').delete('month=eq.'+legacyMonth+'&user_id=eq.'+CU.id);
   await loadTrades();await loadArchivePeriods();renderDash();renderHist();renderStats();renderArchive();
   flash('ok','Deleted '+ids.length+' trades permanently.');
 };
@@ -2712,10 +2740,15 @@ window.doReset=async function(type){
       losses:snap.losses||0,
       wr:parseFloat((snap.wr||0).toFixed(1))
     };
+    // Generate unique period_id for this archive batch
+    const periodId=crypto.randomUUID();
+    snapRow.period_id=periodId;
     const{error:snapErr}=await DB.from('archive_periods').insert(snapRow);
     if(snapErr){flash('err','Snapshot save failed — try again.');return;}
-    // Archive all current trades
-    const{error:archErr}=await DB.from('trades').update({archived:true},'user_id=eq.'+CU.id);
+    // Archive all current active trades and stamp with period_id
+    const{error:archErr}=await DB.from('trades').update({archived:true,period_id:periodId},'user_id=eq.'+CU.id+'&archived=is.null');
+    // Also stamp any that are already false (just in case)
+    await DB.from('trades').update({archived:true,period_id:periodId},'user_id=eq.'+CU.id+'&archived=is.false');
     if(archErr){flash('err','Archive failed — check connection and try again.');return;}
     // Set new balance
     const{error:balErr}=await DB.from('profiles').update({starting_balance:newBal},'id=eq.'+CU.id);
