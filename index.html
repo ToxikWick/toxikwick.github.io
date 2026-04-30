@@ -1601,7 +1601,7 @@ function fPer(arr,p){
   if(p==='week')return active.filter(x=>x.trade_date>=weekStart());
   if(p==='month')return active.filter(x=>x.trade_date.startsWith(t.substring(0,7)));
   if(p==='year')return active.filter(x=>x.trade_date.startsWith(t.substring(0,4)));
-  return arr; // 'all' shows everything including archived
+  return arr.filter(x=>!x.archived); // 'all' excludes archived — archive tab handles those
 }
 function pLbl(p){const t=today();if(p==='today')return'Today · '+t;if(p==='week')return'Week from '+weekStart();if(p==='month')return'Month · '+t.substring(0,7);if(p==='year')return'Year · '+t.substring(0,4);return'All Time'}
 function calcS(arr){
@@ -2222,9 +2222,16 @@ function renderStats(){
     const eTrades=f.filter(t=>parseMetaTag(t.notes).emotion);
     if(!eTrades.length){emotionEl.innerHTML='<span class="muted" style="font-size:12px">No emotion data logged yet</span>';}
     else{
-      const eMap={};eTrades.forEach(t=>{const e=parseMetaTag(t.notes).emotion;if(!eMap[e])eMap[e]={tot:0,w:0,pnl:0};eMap[e].tot++;if(t.result==='Win')eMap[e].w++;eMap[e].pnl+=parseFloat(t.pnl)||0});
-      const order=['Locked In','Confident','Neutral','On Edge','Distracted','Chasing'];
-      const sorted=order.filter(k=>eMap[k]).concat(Object.keys(eMap).filter(k=>!order.includes(k)));
+      // Remap legacy emotions to current labels
+    const emotionRemap={'Calm':'Neutral','Anxious':'On Edge','FOMO':'Chasing','Revenge':'Chasing'};
+    const eMap={};eTrades.forEach(t=>{
+      let e=parseMetaTag(t.notes).emotion;
+      if(emotionRemap[e])e=emotionRemap[e]; // remap old → new
+      if(!eMap[e])eMap[e]={tot:0,w:0,pnl:0};
+      eMap[e].tot++;if(t.result==='Win')eMap[e].w++;eMap[e].pnl+=parseFloat(t.pnl)||0;
+    });
+    const order=['Locked In','Confident','Neutral','On Edge','Distracted','Chasing'];
+    const sorted=order.filter(k=>eMap[k]); // only show current emotions, no legacy ones
       emotionEl.innerHTML=sorted.map(e=>{
         const d=eMap[e];const wr=d.tot?(d.w/d.tot*100):0;const col=emotionColor(e);const wrCol=wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252';
         return'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #181818">'+
@@ -2593,9 +2600,9 @@ function renderArchive(){
         <div style="padding:10px 16px;text-align:center;font-size:10px;color:#2A2A2A;font-family:DM Mono,monospace">${arr.length} trade${arr.length!==1?'s':''} &middot; archived period</div>
       </div>
       <!-- Restore / Delete buttons -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #1C1C1C">
-        <button onclick="restoreArchive('${month}')" style="padding:12px;background:transparent;border:none;border-right:1px solid #1C1C1C;color:#2DB87C;font-size:11px;font-weight:700;font-family:DM Mono,monospace;cursor:pointer;letter-spacing:.05em">↩ RESTORE</button>
-        <button onclick="deleteArchive('${month}')" style="padding:12px;background:transparent;border:none;color:#E05252;font-size:11px;font-weight:700;font-family:DM Mono,monospace;cursor:pointer;letter-spacing:.05em">🗑 DELETE FOREVER</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #252525;background:#0A0A0A">
+        <button onclick="restoreArchive('${month}')" style="padding:13px;background:transparent;border:none;border-right:1px solid #252525;color:#2DB87C;font-size:11px;font-weight:700;font-family:DM Mono,monospace;cursor:pointer;letter-spacing:.05em;width:100%">↩ RESTORE</button>
+        <button onclick="deleteArchive('${month}')" style="padding:13px;background:transparent;border:none;color:#E05252;font-size:11px;font-weight:700;font-family:DM Mono,monospace;cursor:pointer;letter-spacing:.05em;width:100%">🗑 DELETE FOREVER</button>
       </div>
     </div>`;
   });
