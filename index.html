@@ -2138,7 +2138,7 @@ function renderStats(){
   if(!f.length){
     ['a-best','a-worst','a-avgw','a-avgl','a-rrr','a-dd','a-pf','a-streak','a-bstreak'].forEach(id=>setEl(id,'-'));
     setEl('a-streak-ico','-');
-    ['a-sess','a-tfs','a-conf','a-dur','a-emotion','a-dir','a-dow','a-rrr-detail'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML='<span class="muted" style="font-size:12px">No data</span>'});
+    ['a-sess','a-tfs','a-conf','a-dur','a-emotion','a-dir','a-dow','a-rrr-detail','a-heatmap','a-disc-chart'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML='<span class="muted" style="font-size:12px">No data</span>'});
     return;
   }
   const wins=f.filter(t=>t.result==='Win');
