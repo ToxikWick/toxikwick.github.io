@@ -2620,17 +2620,22 @@ window.toggleArchiveGroup=function(id){
 };
 
 window.restoreArchive=async function(month){
-  if(!confirm('Restore all trades from '+month+' back to your active dashboard?'))return;
+  const balStr=prompt('What was your account balance at the start of that period?\n(Enter the balance to restore to)');
+  if(balStr===null)return; // user cancelled
+  const restoreBal=parseFloat(balStr);
+  if(isNaN(restoreBal)||restoreBal<=0){flash('err','Enter a valid balance to restore.');return;}
+  if(!confirm('Restore all trades from '+month+' back to dashboard with balance $'+restoreBal.toFixed(2)+'?'))return;
   const ids=trades.filter(t=>t.archived&&t.trade_date&&t.trade_date.startsWith(month)).map(t=>t.id);
   if(!ids.length){flash('err','No trades found for that period.');return;}
-  let failed=0;
-  for(const id of ids){
-    const{error}=await DB.from('trades').update({archived:null},'id=eq.'+id);
-    if(error)failed++;
-  }
-  if(failed>0){flash('err',failed+' trades failed to restore. Try again.');return;}
+  // Single batch call — update all matching trades at once
+  const{error}=await DB.from('trades').update({archived:null},'id=in.('+ids.join(',')+')');
+  if(error){flash('err','Restore failed — check connection and try again.');return;}
+  // Restore balance
+  const{error:balErr}=await DB.from('profiles').update({starting_balance:restoreBal},'id=eq.'+CU.id);
+  if(balErr){flash('err','Balance restore failed.');return;}
+  CP.starting_balance=restoreBal;
   await loadTrades();renderDash();renderHist();renderStats();renderArchive();
-  flash('ok','Restored '+ids.length+' trades back to dashboard.');
+  flash('ok','Restored '+ids.length+' trades. Balance set to $'+restoreBal.toFixed(2));
 };
 
 window.deleteArchive=async function(month){
@@ -2638,12 +2643,9 @@ window.deleteArchive=async function(month){
   if(!confirm('Are you 100% sure? These trades will be gone forever.'))return;
   const ids=trades.filter(t=>t.archived&&t.trade_date&&t.trade_date.startsWith(month)).map(t=>t.id);
   if(!ids.length){flash('err','No trades found for that period.');return;}
-  let failed=0;
-  for(const id of ids){
-    const{error}=await DB.from('trades').delete('id=eq.'+id);
-    if(error)failed++;
-  }
-  if(failed>0){flash('err',failed+' trades failed to delete. Try again.');return;}
+  // Single batch call — delete all matching trades at once
+  const{error}=await DB.from('trades').delete('id=in.('+ids.join(',')+')');
+  if(error){flash('err','Delete failed — check connection and try again.');return;}
   await loadTrades();renderDash();renderHist();renderStats();renderArchive();
   flash('ok','Deleted '+ids.length+' trades permanently.');
 };
