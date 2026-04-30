@@ -2592,6 +2592,11 @@ function renderArchive(){
         }).join('')}
         <div style="padding:10px 16px;text-align:center;font-size:10px;color:#2A2A2A;font-family:DM Mono,monospace">${arr.length} trade${arr.length!==1?'s':''} &middot; archived period</div>
       </div>
+      <!-- Restore / Delete buttons -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #1C1C1C">
+        <button onclick="restoreArchive('${month}')" style="padding:12px;background:transparent;border:none;border-right:1px solid #1C1C1C;color:#2DB87C;font-size:11px;font-weight:700;font-family:DM Mono,monospace;cursor:pointer;letter-spacing:.05em">↩ RESTORE</button>
+        <button onclick="deleteArchive('${month}')" style="padding:12px;background:transparent;border:none;color:#E05252;font-size:11px;font-weight:700;font-family:DM Mono,monospace;cursor:pointer;letter-spacing:.05em">🗑 DELETE FOREVER</button>
+      </div>
     </div>`;
   });
 
@@ -2605,6 +2610,35 @@ window.toggleArchiveGroup=function(id){
   const open=el.style.display==='block';
   el.style.display=open?'none':'block';
   if(arr)arr.textContent=open?'v':'^';
+};
+
+window.restoreArchive=async function(month){
+  if(!confirm('Restore all trades from '+month+' back to your active dashboard?'))return;
+  const ids=trades.filter(t=>t.archived&&t.trade_date&&t.trade_date.startsWith(month)).map(t=>t.id);
+  if(!ids.length){flash('err','No trades found for that period.');return;}
+  let failed=0;
+  for(const id of ids){
+    const{error}=await DB.from('trades').update({archived:null},'id=eq.'+id);
+    if(error)failed++;
+  }
+  if(failed>0){flash('err',failed+' trades failed to restore. Try again.');return;}
+  await loadTrades();renderDash();renderHist();renderStats();renderArchive();
+  flash('ok','Restored '+ids.length+' trades back to dashboard.');
+};
+
+window.deleteArchive=async function(month){
+  if(!confirm('Permanently delete all trades from '+month+'? This cannot be undone.'))return;
+  if(!confirm('Are you 100% sure? These trades will be gone forever.'))return;
+  const ids=trades.filter(t=>t.archived&&t.trade_date&&t.trade_date.startsWith(month)).map(t=>t.id);
+  if(!ids.length){flash('err','No trades found for that period.');return;}
+  let failed=0;
+  for(const id of ids){
+    const{error}=await DB.from('trades').delete('id=eq.'+id);
+    if(error)failed++;
+  }
+  if(failed>0){flash('err',failed+' trades failed to delete. Try again.');return;}
+  await loadTrades();renderDash();renderHist();renderStats();renderArchive();
+  flash('ok','Deleted '+ids.length+' trades permanently.');
 };
 
 window.doReset=async function(type){
