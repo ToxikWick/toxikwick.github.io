@@ -447,6 +447,24 @@ select option{background:#181818;color:#E2DDD6}
         </div>
         <div id="patience-tracker"><span class="muted">Log trades with entry & exit times to track patience.</span></div>
       </div>
+
+      <!-- WEEKLY BIAS CARD -->
+      <div class="card" style="margin-top:7px" id="weekly-bias-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div class="sec-title" style="margin-bottom:0">📊 Weekly Bias</div>
+          <button onclick="openBiasForm()" style="font-size:10px;font-weight:700;color:#C9A84C;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);border-radius:5px;padding:4px 10px;cursor:pointer;font-family:'DM Mono',monospace">+ LOG BIAS</button>
+        </div>
+        <div id="weekly-bias-content"><span class="muted">No bias logged this week yet.</span></div>
+      </div>
+
+      <!-- PROP FIRM CHALLENGE CARD (shows only when active) -->
+      <div class="card" style="margin-top:7px;display:none;border-left:3px solid #C9A84C" id="prop-challenge-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div class="sec-title" style="margin-bottom:0">🏆 Prop Challenge</div>
+          <span id="prop-firm-name" style="font-size:10px;color:#C9A84C;font-family:'DM Mono',monospace">—</span>
+        </div>
+        <div id="prop-challenge-content">—</div>
+      </div>
     </div>
 
     <!-- LOG TRADE -->
@@ -653,6 +671,16 @@ select option{background:#181818;color:#E2DDD6}
         </div>
         <div class="divider"></div>
         <div class="fld"><label>Notes / Review</label><textarea id="f-notes" rows="3" placeholder="Execution notes, what the market did, psychology..."></textarea></div>
+        <!-- CHART SCREENSHOT UPLOAD -->
+        <div style="margin-bottom:12px">
+          <label style="font-size:10px;color:#666;letter-spacing:.08em;text-transform:uppercase;font-family:'DM Mono',monospace;display:block;margin-bottom:6px">Chart Screenshot (optional)</label>
+          <div id="chart-upload-area" onclick="document.getElementById('f-chart-file').click()" style="border:1px dashed #2A2A2A;border-radius:7px;padding:14px;text-align:center;cursor:pointer;background:#0D0D0D;transition:border-color .2s">
+            <div id="chart-preview" style="display:none;margin-bottom:8px"><img id="chart-preview-img" style="max-width:100%;max-height:160px;border-radius:5px;object-fit:contain"></div>
+            <div id="chart-upload-hint" style="font-size:10px;color:#444;font-family:'DM Mono',monospace">📷 Tap to add chart screenshot</div>
+          </div>
+          <input type="file" id="f-chart-file" accept="image/*" style="display:none" onchange="previewChart(this)">
+          <button type="button" id="chart-remove-btn" onclick="removeChart()" style="display:none;margin-top:5px;font-size:9px;color:#E05252;background:transparent;border:none;cursor:pointer;font-family:'DM Mono',monospace">✕ Remove chart</button>
+        </div>
         <button class="btn-p" id="save-btn" onclick="handleSave()" style="width:100%;margin-top:16px;padding:13px;font-size:13px">SAVE TRADE</button>
       </div>
     </div>
@@ -768,6 +796,69 @@ select option{background:#181818;color:#E2DDD6}
 </div>
 
 <!-- SETTINGS MODAL -->
+<!-- WEEKLY BIAS MODAL -->
+<div id="m-bias" class="moverlay center" style="display:none" onclick="if(event.target===this)closeModal('m-bias')">
+  <div class="modal" style="max-width:360px;width:92%">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700">📊 Log Weekly Bias</div>
+      <button onclick="closeModal('m-bias')" style="background:none;border:none;color:#444;font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div class="fld" style="margin-bottom:10px">
+      <label>Week Starting</label>
+      <input type="date" id="bias-week-start">
+    </div>
+    <div class="fld" style="margin-bottom:10px">
+      <label>Bias Direction</label>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button type="button" class="bias-dir-btn" data-val="Bullish" onclick="selectBiasDir(this)" style="flex:1;padding:10px;border-radius:6px;border:1px solid #1C1C1C;background:#111;color:#2DB87C;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Mono',monospace">▲ BULLISH</button>
+        <button type="button" class="bias-dir-btn" data-val="Bearish" onclick="selectBiasDir(this)" style="flex:1;padding:10px;border-radius:6px;border:1px solid #1C1C1C;background:#111;color:#E05252;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Mono',monospace">▼ BEARISH</button>
+        <button type="button" class="bias-dir-btn" data-val="Neutral" onclick="selectBiasDir(this)" style="flex:1;padding:10px;border-radius:6px;border:1px solid #1C1C1C;background:#111;color:#C9A84C;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Mono',monospace">— NEUTRAL</button>
+      </div>
+      <input type="hidden" id="bias-direction" value="">
+    </div>
+    <div class="fld" style="margin-bottom:10px">
+      <label>Key Level (price)</label>
+      <input type="number" id="bias-key-level" placeholder="e.g. 3285.00" step="0.01">
+    </div>
+    <div class="fld" style="margin-bottom:10px">
+      <label>Weekly Narrative</label>
+      <textarea id="bias-narrative" rows="3" placeholder="What is smart money doing? What are you watching? What's your plan for the week..."></textarea>
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:10px;color:#666;letter-spacing:.08em;text-transform:uppercase;font-family:'DM Mono',monospace;display:block;margin-bottom:6px">Weekly Chart (optional)</label>
+      <div id="bias-chart-area" onclick="document.getElementById('bias-chart-file').click()" style="border:1px dashed #2A2A2A;border-radius:7px;padding:12px;text-align:center;cursor:pointer;background:#0D0D0D">
+        <div id="bias-chart-preview" style="display:none;margin-bottom:6px"><img id="bias-chart-img" style="max-width:100%;max-height:140px;border-radius:5px;object-fit:contain"></div>
+        <div id="bias-chart-hint" style="font-size:10px;color:#444;font-family:'DM Mono',monospace">📷 Tap to add weekly chart</div>
+      </div>
+      <input type="file" id="bias-chart-file" accept="image/*" style="display:none" onchange="previewBiasChart(this)">
+      <button type="button" id="bias-chart-remove" onclick="removeBiasChart()" style="display:none;margin-top:4px;font-size:9px;color:#E05252;background:transparent;border:none;cursor:pointer;font-family:'DM Mono',monospace">✕ Remove chart</button>
+    </div>
+    <button class="btn-p" onclick="saveWeeklyBias()" style="width:100%;padding:12px;font-size:12px">SAVE BIAS</button>
+  </div>
+</div>
+
+<!-- PROP CHALLENGE MODAL -->
+<div id="m-prop" class="moverlay center" style="display:none" onclick="if(event.target===this)closeModal('m-prop')">
+  <div class="modal" style="max-width:360px;width:92%">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700">🏆 Prop Challenge Setup</div>
+      <button onclick="closeModal('m-prop')" style="background:none;border:none;color:#444;font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div class="fg">
+      <div class="fld"><label>Firm Name</label><input type="text" id="prop-firm" placeholder="e.g. GFT, FTMO, MyForexFunds"></div>
+      <div class="fld"><label>Account Size ($)</label><input type="number" id="prop-size" placeholder="5000"></div>
+      <div class="fld"><label>Daily Loss Limit ($)</label><input type="number" id="prop-daily" placeholder="250"></div>
+      <div class="fld"><label>Max Drawdown ($)</label><input type="number" id="prop-maxdd" placeholder="500"></div>
+      <div class="fld"><label>Profit Target ($)</label><input type="number" id="prop-target" placeholder="500"></div>
+      <div class="fld"><label>Start Date</label><input type="date" id="prop-start"></div>
+    </div>
+    <div style="font-size:10px;color:#555;font-family:'DM Mono',monospace;margin:8px 0 12px;padding:8px;background:#0D0D0D;border-radius:5px;border:1px solid #1C1C1C">
+      ⚡ Min hold time: <strong style="color:#C9A84C">2 minutes</strong> on winning trades — auto-checked on save
+    </div>
+    <button class="btn-p" onclick="saveChallenge()" style="width:100%;padding:12px;font-size:12px">ACTIVATE CHALLENGE</button>
+  </div>
+</div>
+
 <div id="m-settings" class="moverlay center" style="display:none" onclick="if(event.target===this)closeModal('m-settings')">
   <div class="modal center">
     <button class="mclose" onclick="closeModal('m-settings')">×</button>
@@ -794,6 +885,12 @@ select option{background:#181818;color:#E2DDD6}
       <div style="font-size:11px;color:#444;line-height:1.5;margin-bottom:10px">Permanently deletes ALL your trades. Cannot be undone.</div>
       <button onclick="doReset('wipe')" style="width:100%;padding:9px;background:rgba(224,82,82,.08);color:#E05252;border:1px solid rgba(224,82,82,.25);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Mono',monospace">DELETE ALL TRADES</button>
     </div>
+    <div style="height:1px;background:#181818;margin:18px 0"></div>
+    <div style="font-size:9px;color:#C9A84C;letter-spacing:.12em;text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:10px">Prop Firm Challenge</div>
+    <div style="background:#0A0A0A;border:1px solid #1C1C1C;border-radius:8px;padding:13px" id="prop-settings-block">
+      <div style="font-size:11px;color:#444;line-height:1.5;margin-bottom:10px" id="prop-settings-status">No active challenge.</div>
+      <button onclick="openPropModal()" style="width:100%;padding:9px;background:rgba(201,168,76,.09);color:#C9A84C;border:1px solid rgba(201,168,76,.25);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Mono',monospace" id="prop-settings-btn">SET UP CHALLENGE</button>
+    </div>
   </div>
 </div>
 
@@ -813,6 +910,7 @@ select option{background:#181818;color:#E2DDD6}
 const SB_URL='https://pewkiwknniphfwhnoxsv.supabase.co';
 const SB_KEY='sb_publishable_l4PTYKlCiPoVGkQZj0loWQ_JMHGkGd3';
 const AUTH_URL=SB_URL+'/auth/v1';
+const STORAGE_URL=SB_URL+'/storage/v1';
 
 // Session stored in localStorage
 let _session=null;
@@ -885,7 +983,7 @@ const DB={
   }
 };
 
-let CU=null,CP=null,trades=[],archivePeriods=[];
+let CU=null,CP=null,trades=[],archivePeriods=[],weeklyBiasData=[],propChallenge=null;
 let dPer='today',hPer='daily',aPer='month';
 
 // -- UPDATED CONFLUENCE (6 items) --
@@ -990,7 +1088,7 @@ async function initApp(user){
   if(CP.role==='admin')document.getElementById('admin-btn').style.display='flex';
   buildConf();
   document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
-  await loadTrades();await loadArchivePeriods();
+  await loadTrades();await loadArchivePeriods();await loadWeeklyBias();await loadPropChallenge();
   show('app');
   document.getElementById('ql-fab').style.display='flex';
   renderDash();renderHist();renderStats();renderArchive();loadRules();
@@ -1014,6 +1112,44 @@ async function loadTrades(){
 async function loadArchivePeriods(){
   const{data,error}=await DB.from('archive_periods').select('*','user_id=eq.'+CU.id+'&order=archived_at.desc');
   if(!error)archivePeriods=data||[];
+}
+async function loadWeeklyBias(){
+  const{data,error}=await DB.from('weekly_bias').select('*','user_id=eq.'+CU.id+'&order=week_start.desc&limit=8');
+  if(!error)weeklyBiasData=data||[];
+}
+async function loadPropChallenge(){
+  const{data,error}=await DB.from('prop_challenges').select('*','user_id=eq.'+CU.id+'&status=eq.active&limit=1');
+  if(!error&&data&&data.length)propChallenge=data[0];
+  else propChallenge=null;
+}
+async function uploadChart(file,folder){
+  // Compress image client-side before upload
+  return new Promise(resolve=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const img=new Image();
+      img.onload=()=>{
+        const canvas=document.createElement('canvas');
+        const maxW=1200;
+        const scale=img.width>maxW?maxW/img.width:1;
+        canvas.width=img.width*scale;
+        canvas.height=img.height*scale;
+        canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+        canvas.toBlob(async blob=>{
+          const fileName=CU.id+'/'+folder+'/'+Date.now()+'.jpg';
+          const res=await fetch(STORAGE_URL+'/object/charts/'+fileName,{
+            method:'POST',
+            headers:{'apikey':SB_KEY,'Authorization':'Bearer '+(_session?_session.access_token:SB_KEY),'Content-Type':'image/jpeg'},
+            body:blob
+          });
+          if(res.ok){resolve(STORAGE_URL+'/object/public/charts/'+fileName);}
+          else{console.error('Upload failed',await res.text());resolve(null);}
+        },'image/jpeg',0.80);
+      };
+      img.src=e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 async function checkUnassigned(){
   const{data}=await DB.from('trades').select('id','user_id=is.null');
@@ -1453,9 +1589,27 @@ async function saveTrade(){
     rejection_candle:cv.rejection_candle,
     session_alignment:cv.sr_level,
   };
+  // Chart upload
+  const chartFile=document.getElementById('f-chart-file').files[0];
+  if(chartFile){
+    btn.textContent='UPLOADING CHART...';
+    const chartUrl=await uploadChart(chartFile,'trades');
+    if(chartUrl)trade.chart_url=chartUrl;
+  }
+  // Prop challenge: 2min hold check on WINNING trades only
+  if(propChallenge&&trade.result==='Win'&&trade.entry_time&&trade.exit_time){
+    const[eh,em]=trade.entry_time.split(':').map(Number);
+    const[xh,xm]=trade.exit_time.split(':').map(Number);
+    const holdMins=(xh*60+xm)-(eh*60+em);
+    if(holdMins<2){
+      flash('err','⚠ Hold time violation — winning trade held less than 2 minutes. Prop firm rule breach!');
+      btn.disabled=false;btn.textContent='SAVE TRADE';return;
+    }
+  }
   const{data,error}=await DB.from('trades').insert(trade);
   if(error){flash('err','Save failed: '+error.message);btn.disabled=false;btn.textContent='SAVE TRADE';return}
   trades=[data[0],...trades];
+  removeChart();
   resetForm();renderDash();renderHist();renderStats();
   document.querySelectorAll('.tc').forEach(x=>x.classList.remove('on'));
   document.querySelectorAll('.nbtn').forEach(x=>x.classList.remove('on'));
@@ -1481,6 +1635,7 @@ function resetForm(){
   document.querySelectorAll('#emotion-btns .ebtn').forEach(b=>b.classList.remove('on'));
   document.getElementById('f-disc').value=5;
   document.querySelectorAll('#disc-stars .dstar').forEach((s,i)=>{s.style.color='#C9A84C'});
+  if(typeof removeChart==='function')removeChart();
   document.getElementById('disc-label').textContent='5 — Fully disciplined';
   document.getElementById('f-pnl').className='';
   // Reset multi-entry rows
@@ -1674,6 +1829,8 @@ function renderDash(){
     const prices='<div style="font-size:9px;color:#333;font-family:DM Mono,monospace;margin-top:2px">Entry: '+t.entry+(t.exit_price?' → '+t.exit_price:'')+' · SL: '+t.stop_loss+'</div>';
     return'<div class="trow"><div style="flex:1"><div style="font-size:12px;font-weight:600;margin-bottom:1px">'+t.trade_date+' · '+t.session+' · '+t.timeframe+' · '+t.direction+'</div>'+tim+prices+'</div><div style="display:flex;gap:7px;align-items:center;flex-shrink:0"><span style="font-size:13px;font-weight:700;color:'+pc(t.pnl)+';font-family:DM Mono,monospace">'+fp(t.pnl)+'</span><span class="badge" style="background:'+col+'22;color:'+col+';border:1px solid '+col+'44">'+t.result+'</span></div></div>';
   }).join('');
+  renderWeeklyBias();
+  renderPropChallenge();
 }
 
 // -- HISTORY HELPERS --
@@ -1901,6 +2058,8 @@ function tradeCard(t){
     tim+priceGrid+metaRow+
     (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
     confBadges+
+    // ── CHART THUMBNAIL ──
+    (t.chart_url?'<div style="margin-top:8px"><img src="'+t.chart_url+'" onclick="var i=this;i.style.maxHeight=i.style.maxHeight==\'none\'?\'100px\':\'none\'" style="width:100%;max-height:100px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #1C1C1C" title="Tap to expand chart"></div>':'')+
     // ── EDIT / DELETE ──
     '<div style="display:flex;gap:6px;margin-top:8px">'+
       '<button onclick="openEditTrade(\''+t.id+'\')" style="flex:1;font-size:10px;color:#C9A84C;background:transparent;border:1px solid rgba(201,168,76,.25);border-radius:4px;padding:5px;cursor:pointer">✏ Edit</button>'+
@@ -2513,6 +2672,272 @@ function exportCSV(){
   const rows=f.map(t=>[t.trade_date,t.session,t.timeframe,t.direction,t.entry,t.exit_price||'',t.stop_loss,t.lot_size||0.01,t.entry_time||'',t.exit_time||'',t.trade_duration||'',t.result,t.pnl,t.confluence_score,'"'+(t.notes||'').replace(/"/g,'""')+'"']);
   const csv=[hdr.join(','),...rows.map(r=>r.join(','))].join('\n');
   const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='toxikwick-'+today()+'.csv';a.click();
+}
+
+// -- CHART UPLOAD PREVIEW --
+window.previewChart=function(input){
+  if(!input.files||!input.files[0])return;
+  const file=input.files[0];
+  const url=URL.createObjectURL(file);
+  document.getElementById('chart-preview-img').src=url;
+  document.getElementById('chart-preview').style.display='block';
+  document.getElementById('chart-upload-hint').style.display='none';
+  document.getElementById('chart-remove-btn').style.display='inline-block';
+};
+window.removeChart=function(){
+  document.getElementById('f-chart-file').value='';
+  document.getElementById('chart-preview').style.display='none';
+  document.getElementById('chart-upload-hint').style.display='block';
+  document.getElementById('chart-remove-btn').style.display='none';
+};
+window.previewBiasChart=function(input){
+  if(!input.files||!input.files[0])return;
+  const url=URL.createObjectURL(input.files[0]);
+  document.getElementById('bias-chart-img').src=url;
+  document.getElementById('bias-chart-preview').style.display='block';
+  document.getElementById('bias-chart-hint').style.display='none';
+  document.getElementById('bias-chart-remove').style.display='inline-block';
+};
+window.removeBiasChart=function(){
+  document.getElementById('bias-chart-file').value='';
+  document.getElementById('bias-chart-preview').style.display='none';
+  document.getElementById('bias-chart-hint').style.display='block';
+  document.getElementById('bias-chart-remove').style.display='none';
+};
+
+// -- WEEKLY BIAS --
+function getWeekStart(date){
+  const d=new Date(date||Date.now());
+  const day=d.getDay();
+  const diff=d.getDate()-day+(day===0?-6:1); // Monday
+  const mon=new Date(d.setDate(diff));
+  return mon.toISOString().split('T')[0];
+}
+window.openBiasForm=function(){
+  document.getElementById('bias-week-start').value=getWeekStart();
+  document.getElementById('bias-direction').value='';
+  document.getElementById('bias-key-level').value='';
+  document.getElementById('bias-narrative').value='';
+  removeBiasChart();
+  // Reset direction buttons
+  document.querySelectorAll('.bias-dir-btn').forEach(b=>{b.style.opacity='0.5';b.style.transform='scale(1)';});
+  openModal('m-bias');
+};
+window.selectBiasDir=function(btn){
+  document.querySelectorAll('.bias-dir-btn').forEach(b=>{b.style.opacity='0.4';b.style.transform='scale(1)';});
+  btn.style.opacity='1';btn.style.transform='scale(1.04)';
+  document.getElementById('bias-direction').value=btn.dataset.val;
+};
+window.saveWeeklyBias=async function(){
+  const weekStart=document.getElementById('bias-week-start').value;
+  const direction=document.getElementById('bias-direction').value;
+  const keyLevel=parseFloat(document.getElementById('bias-key-level').value)||null;
+  const narrative=document.getElementById('bias-narrative').value.trim();
+  if(!weekStart){flash('err','Pick a week start date.');return;}
+  if(!direction){flash('err','Select a bias direction.');return;}
+  let chartUrl=null;
+  const chartFile=document.getElementById('bias-chart-file').files[0];
+  if(chartFile){
+    flash('ok','Uploading chart...');
+    chartUrl=await uploadChart(chartFile,'bias');
+    if(!chartUrl){flash('err','Chart upload failed — bias saved without chart.');} 
+  }
+  const row={user_id:CU.id,week_start:weekStart,direction,key_level:keyLevel,narrative:narrative||null,chart_url:chartUrl};
+  const{error}=await DB.from('weekly_bias').insert(row);
+  if(error){flash('err','Failed to save bias.');return;}
+  await loadWeeklyBias();
+  renderWeeklyBias();
+  closeModal('m-bias');
+  flash('ok','Weekly bias saved!');
+};
+window.markBiasOutcome=async function(id,outcome){
+  const{error}=await DB.from('weekly_bias').update({outcome},'id=eq.'+id);
+  if(error){flash('err','Failed to update outcome.');return;}
+  const b=weeklyBiasData.find(w=>w.id===id);
+  if(b)b.outcome=outcome;
+  renderWeeklyBias();
+  flash('ok','Marked as '+outcome+'!');
+};
+function renderWeeklyBias(){
+  const el=document.getElementById('weekly-bias-content');
+  if(!el)return;
+  if(!weeklyBiasData.length){el.innerHTML='<span class="muted">No bias logged yet.</span>';return;}
+  // Show current week first, then last 3
+  const thisWeek=getWeekStart();
+  const current=weeklyBiasData.find(w=>w.week_start===thisWeek);
+  const recent=weeklyBiasData.filter(w=>w.week_start!==thisWeek).slice(0,2);
+  const dirCol=d=>d==='Bullish'?'#2DB87C':d==='Bearish'?'#E05252':'#C9A84C';
+  const dirIco=d=>d==='Bullish'?'▲':d==='Bearish'?'▼':'—';
+  const outcomeChip=b=>{
+    if(!b.outcome){
+      const bid=b.id;
+      return '<div style="display:flex;gap:5px;margin-top:8px">'+
+        '<button onclick="markBiasOutcome(\'' +bid+ '\',\'Correct\')" style="flex:1;padding:6px;border-radius:5px;border:1px solid rgba(45,184,124,.3);background:rgba(45,184,124,.06);color:#2DB87C;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Mono,monospace">✓ CORRECT</button>'+
+        '<button onclick="markBiasOutcome(\'' +bid+ '\',\'Wrong\')" style="flex:1;padding:6px;border-radius:5px;border:1px solid rgba(224,82,82,.3);background:rgba(224,82,82,.06);color:#E05252;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Mono,monospace">✕ WRONG</button>'+
+      '</div>';
+    }
+    const c=b.outcome==='Correct'?'#2DB87C':'#E05252';
+    return '<div style="margin-top:6px;font-size:10px;font-weight:700;color:'+c+';font-family:DM Mono,monospace">'+(b.outcome==='Correct'?'✓ CORRECT':'✕ WRONG')+'</div>';
+  };
+  const biasCard=b=>'<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:8px;padding:12px;margin-bottom:8px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+      '<div style="font-size:9px;color:#444;font-family:DM Mono,monospace">Week of '+b.week_start+'</div>'+
+      '<div style="font-size:16px;font-weight:700;color:'+dirCol(b.direction)+';font-family:DM Mono,monospace">'+dirIco(b.direction)+' '+b.direction.toUpperCase()+'</div>'+
+    '</div>'+
+    (b.key_level?'<div style="font-size:10px;color:#666;font-family:DM Mono,monospace;margin-bottom:4px">Key Level: <span style="color:#E2DDD6">'+b.key_level+'</span></div>':'')+
+    (b.narrative?'<div style="font-size:11px;color:#777;line-height:1.5;margin-bottom:6px">'+b.narrative+'</div>':'')+
+    (b.chart_url?'<img src="'+b.chart_url+'" onclick="var i=this;i.style.maxHeight=i.style.maxHeight==\'none\'?\'120px\':\'none\'" style="width:100%;max-height:120px;object-fit:cover;border-radius:5px;cursor:pointer;margin-bottom:4px" title="Tap to expand">':'')+
+    outcomeChip(b)+
+  '</div>';
+  let html='';
+  if(current)html+=biasCard(current);
+  if(recent.length){
+    html+='<div style="font-size:9px;color:#333;font-family:DM Mono,monospace;margin:8px 0 5px;letter-spacing:.1em;text-transform:uppercase">Previous Weeks</div>';
+    html+=recent.map(biasCard).join('');
+  }
+  // Accuracy summary
+  const decided=weeklyBiasData.filter(w=>w.outcome);
+  if(decided.length>=2){
+    const correct=decided.filter(w=>w.outcome==='Correct').length;
+    const acc=Math.round(correct/decided.length*100);
+    const accCol=acc>=60?'#2DB87C':acc>=40?'#C9A84C':'#E05252';
+    html+='<div style="text-align:center;padding:8px;background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;font-size:10px;font-family:DM Mono,monospace;color:#444">Bias Accuracy: <strong style="color:'+accCol+'">'+acc+'%</strong> ('+correct+'/'+decided.length+' weeks)</div>';
+  }
+  el.innerHTML=html;
+}
+
+// -- PROP FIRM CHALLENGE --
+window.openPropModal=function(){
+  closeModal('m-settings');
+  if(propChallenge){
+    document.getElementById('prop-firm').value=propChallenge.firm_name||'';
+    document.getElementById('prop-size').value=propChallenge.account_size||'';
+    document.getElementById('prop-daily').value=propChallenge.daily_loss_limit||'';
+    document.getElementById('prop-maxdd').value=propChallenge.max_drawdown||'';
+    document.getElementById('prop-target').value=propChallenge.profit_target||'';
+    document.getElementById('prop-start').value=propChallenge.start_date||'';
+  } else {
+    document.getElementById('prop-firm').value='';
+    document.getElementById('prop-size').value='';
+    document.getElementById('prop-daily').value='';
+    document.getElementById('prop-maxdd').value='';
+    document.getElementById('prop-target').value='';
+    document.getElementById('prop-start').value=new Date().toISOString().split('T')[0];
+  }
+  openModal('m-prop');
+};
+window.saveChallenge=async function(){
+  const firm=document.getElementById('prop-firm').value.trim();
+  const size=parseFloat(document.getElementById('prop-size').value);
+  const daily=parseFloat(document.getElementById('prop-daily').value);
+  const maxdd=parseFloat(document.getElementById('prop-maxdd').value);
+  const target=parseFloat(document.getElementById('prop-target').value);
+  const start=document.getElementById('prop-start').value;
+  if(!firm||!size||!daily||!maxdd||!target||!start){flash('err','Fill in all challenge fields.');return;}
+  // Deactivate any existing challenge first
+  if(propChallenge){
+    await DB.from('prop_challenges').update({status:'inactive'},'user_id=eq.'+CU.id+'&status=eq.active');
+  }
+  const row={user_id:CU.id,firm_name:firm,account_size:size,daily_loss_limit:daily,max_drawdown:maxdd,profit_target:target,start_date:start,status:'active'};
+  const{error}=await DB.from('prop_challenges').insert(row);
+  if(error){flash('err','Failed to save challenge.');return;}
+  await loadPropChallenge();
+  renderPropChallenge();
+  closeModal('m-prop');
+  flash('ok',firm+' challenge activated!');
+};
+window.endChallenge=async function(status){
+  if(!propChallenge)return;
+  if(!confirm('Mark challenge as '+status+'?'))return;
+  const{error}=await DB.from('prop_challenges').update({status:status.toLowerCase()},'id=eq.'+propChallenge.id);
+  if(error){flash('err','Failed to update challenge.');return;}
+  propChallenge=null;
+  renderPropChallenge();
+  flash('ok','Challenge marked as '+status+'.');
+};
+function renderPropChallenge(){
+  const card=document.getElementById('prop-challenge-card');
+  const el=document.getElementById('prop-challenge-content');
+  const nameEl=document.getElementById('prop-firm-name');
+  const settingsStatus=document.getElementById('prop-settings-status');
+  const settingsBtn=document.getElementById('prop-settings-btn');
+  if(!propChallenge){
+    if(card)card.style.display='none';
+    if(settingsStatus)settingsStatus.textContent='No active challenge.';
+    if(settingsBtn)settingsBtn.textContent='SET UP CHALLENGE';
+    return;
+  }
+  if(card)card.style.display='block';
+  if(nameEl)nameEl.textContent=propChallenge.firm_name+' · $'+propChallenge.account_size.toLocaleString();
+  if(settingsStatus)settingsStatus.textContent='Active: '+propChallenge.firm_name;
+  if(settingsBtn)settingsBtn.textContent='EDIT / END CHALLENGE';
+  // Calculate current stats
+  const challengeTrades=trades.filter(t=>!t.archived&&t.trade_date>=propChallenge.start_date);
+  const todayStr=new Date().toISOString().split('T')[0];
+  const todayTrades=challengeTrades.filter(t=>t.trade_date===todayStr);
+  const totalPnl=challengeTrades.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0);
+  const todayPnl=todayTrades.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0);
+  const target=propChallenge.profit_target;
+  const maxdd=propChallenge.max_drawdown;
+  const dailyLim=propChallenge.daily_loss_limit;
+  const progPct=Math.min(Math.max(totalPnl/target*100,0),100);
+  const ddPct=Math.min(Math.max(Math.abs(Math.min(totalPnl,0))/maxdd*100,0),100);
+  const dailyPct=Math.min(Math.max(Math.abs(Math.min(todayPnl,0))/dailyLim*100,0),100);
+  const pCol=pc(totalPnl);
+  const ddCol=ddPct>=80?'#E05252':ddPct>=60?'#C9A84C':'#2DB87C';
+  const dayCol=dailyPct>=80?'#E05252':dailyPct>=60?'#C9A84C':'#2DB87C';
+  // Days since start
+  const days=Math.floor((new Date()-new Date(propChallenge.start_date))/(1000*60*60*24))+1;
+  el.innerHTML=
+    // Progress toward target
+    '<div style="margin-bottom:10px">'+
+      '<div style="display:flex;justify-content:space-between;font-size:9px;color:#555;font-family:DM Mono,monospace;margin-bottom:4px">'+
+        '<span>Profit Progress</span><span style="color:'+pCol+'">'+fp(totalPnl)+' / '+fp(target)+'</span>'+
+      '</div>'+
+      '<div style="background:#151515;border-radius:99px;height:6px;overflow:hidden">'+
+        '<div style="width:'+progPct+'%;height:100%;border-radius:99px;background:#2DB87C;transition:width .5s"></div>'+
+      '</div>'+
+    '</div>'+
+    // Daily loss
+    '<div style="margin-bottom:10px">'+
+      '<div style="display:flex;justify-content:space-between;font-size:9px;color:#555;font-family:DM Mono,monospace;margin-bottom:4px">'+
+        '<span>Daily Loss Used</span><span style="color:'+dayCol+'">'+fp(Math.min(todayPnl,0))+' / -'+fp(dailyLim)+'</span>'+
+      '</div>'+
+      '<div style="background:#151515;border-radius:99px;height:6px;overflow:hidden">'+
+        '<div style="width:'+dailyPct+'%;height:100%;border-radius:99px;background:'+dayCol+';transition:width .5s"></div>'+
+      '</div>'+
+      (dailyPct>=80?'<div style="font-size:9px;color:#E05252;margin-top:3px;font-family:DM Mono,monospace">⚠ Approaching daily loss limit — trade carefully</div>':'')+
+    '</div>'+
+    // Max drawdown
+    '<div style="margin-bottom:10px">'+
+      '<div style="display:flex;justify-content:space-between;font-size:9px;color:#555;font-family:DM Mono,monospace;margin-bottom:4px">'+
+        '<span>Max Drawdown Used</span><span style="color:'+ddCol+'">'+fp(Math.min(totalPnl,0))+' / -'+fp(maxdd)+'</span>'+
+      '</div>'+
+      '<div style="background:#151515;border-radius:99px;height:6px;overflow:hidden">'+
+        '<div style="width:'+ddPct+'%;height:100%;border-radius:99px;background:'+ddCol+';transition:width .5s"></div>'+
+      '</div>'+
+      (ddPct>=80?'<div style="font-size:9px;color:#E05252;margin-top:3px;font-family:DM Mono,monospace">⚠ Danger zone — drawdown limit nearly reached</div>':'')+
+    '</div>'+
+    // Stats row
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">'+
+      '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;padding:8px;text-align:center">'+
+        '<div style="font-size:8px;color:#444;font-family:DM Mono,monospace">TRADES</div>'+
+        '<div style="font-size:14px;font-weight:700;color:#E2DDD6;font-family:DM Mono,monospace">'+challengeTrades.length+'</div>'+
+      '</div>'+
+      '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;padding:8px;text-align:center">'+
+        '<div style="font-size:8px;color:#444;font-family:DM Mono,monospace">DAYS</div>'+
+        '<div style="font-size:14px;font-weight:700;color:#E2DDD6;font-family:DM Mono,monospace">'+days+'</div>'+
+      '</div>'+
+      '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;padding:8px;text-align:center">'+
+        '<div style="font-size:8px;color:#444;font-family:DM Mono,monospace">NET P&L</div>'+
+        '<div style="font-size:14px;font-weight:700;color:'+pCol+';font-family:DM Mono,monospace">'+fp(totalPnl)+'</div>'+
+      '</div>'+
+    '</div>'+
+    // End challenge buttons
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'+
+      '<button onclick="endChallenge(\'Passed\')" style="padding:8px;border-radius:5px;border:1px solid rgba(45,184,124,.3);background:rgba(45,184,124,.06);color:#2DB87C;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Mono,monospace">🏆 MARK PASSED</button>'+
+      '<button onclick="endChallenge(\'Failed\')" style="padding:8px;border-radius:5px;border:1px solid rgba(224,82,82,.3);background:rgba(224,82,82,.06);color:#E05252;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Mono,monospace">✕ MARK FAILED</button>'+
+    '</div>';
 }
 
 // -- SETTINGS --
