@@ -757,6 +757,10 @@ select option{background:#181818;color:#E2DDD6}
         <div class="sec-title">⚖ Risk / Reward per Setup</div>
         <div id="a-rrr-detail">—</div>
       </div>
+      <div class="card" style="margin-top:7px">
+        <div class="sec-title">📊 Weekly Bias Accuracy</div>
+        <div id="a-bias-acc">—</div>
+      </div>
     </div>
 
     <!-- ARCHIVE TAB -->
@@ -1471,9 +1475,18 @@ window.saveMultiTrade=async function(){
     });
   }
   if(!trades_to_save.length){flash('err','No valid entries to save.');btn.disabled=false;btn.textContent='SAVE ALL 3 ENTRIES';return;}
+  // Chart upload for multi-entry (applies to all entries in this setup)
+  const chartFileM=document.getElementById('f-chart-file').files[0];
+  let sharedChartUrl=null;
+  if(chartFileM){
+    btn.textContent='UPLOADING CHART...';
+    sharedChartUrl=await uploadChart(chartFileM,'trades');
+  }
+  if(sharedChartUrl){trades_to_save.forEach(t=>t.chart_url=sharedChartUrl);}
   const{data,error}=await DB.from('trades').insert(trades_to_save);
   if(error){flash('err','Save failed: '+error.message);btn.disabled=false;btn.textContent='SAVE ALL 3 ENTRIES';return;}
   trades=[...(data||[]),...trades];
+  removeChart();
   renderDash();renderHist();renderStats();
   resetForm();
   setLogMode('single');
@@ -2257,7 +2270,7 @@ function renderStats(){
         '<div style="font-size:9px;color:#666;letter-spacing:.15em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:6px">Live Current Streak · All Time</div>'+
         (allSorted.length?
           '<div style="font-size:28px;margin-bottom:4px">'+ico+'</div>'+
-          '<div style="font-size:26px;font-weight:700;color:'+curCol+';font-family:DM Mono,monospace">'+cs+' '+(ct==='Win'?'Win':'Loss')+(cs!==1?'s':'')+'</div>'+
+          '<div style="font-size:26px;font-weight:700;color:'+curCol+';font-family:DM Mono,monospace">'+(ct==='Win'?(cs===1?'1 Win':cs+' Wins'):(cs===1?'1 Loss':cs+' Losses'))+'</div>'+
           '<div style="font-size:10px;color:#777;margin-top:3px">in a row right now</div>'+
           (ct==='Loss'&&cs>=3?'<div style="font-size:10px;color:#E05252;margin-top:6px;padding:5px 10px;background:rgba(224,82,82,.06);border-radius:5px;display:inline-block">⚠ Stop and review before next trade</div>':'')+
           (ct==='Win'&&cs>=5?'<div style="font-size:10px;color:#2DB87C;margin-top:6px;padding:5px 10px;background:rgba(45,184,124,.06);border-radius:5px;display:inline-block">🔥 Stay disciplined, keep executing</div>':''):
@@ -2297,7 +2310,7 @@ function renderStats(){
   if(!f.length){
     ['a-best','a-worst','a-avgw','a-avgl','a-rrr','a-dd','a-pf','a-streak','a-bstreak'].forEach(id=>setEl(id,'-'));
     setEl('a-streak-ico','-');
-    ['a-sess','a-tfs','a-conf','a-dur','a-emotion','a-dir','a-dow','a-rrr-detail','a-heatmap','a-disc-chart'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML='<span class="muted" style="font-size:12px">No data</span>'});
+    ['a-sess','a-tfs','a-conf','a-dur','a-emotion','a-dir','a-dow','a-rrr-detail','a-heatmap','a-disc-chart','a-bias-acc'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML='<span class="muted" style="font-size:12px">No data</span>'});
     return;
   }
   const wins=f.filter(t=>t.result==='Win');
@@ -2311,8 +2324,19 @@ function renderStats(){
   setEl('a-avgw',wins.length?'+$'+avgW.toFixed(2):'N/A');
   setEl('a-avgl',losses.length?'-$'+avgL.toFixed(2):'N/A — no losses','#2DB87C');
   setEl('a-rrr',avgL>0?(avgW/avgL).toFixed(2)+'R':'N/A — no losses','#2DB87C');
+  // Max drawdown — sort by trade_date + entry_time (chronological) for accuracy
+  const ddSorted=[...f].sort((a,b)=>{
+    const da=(a.trade_date||'')+(a.entry_time||'00:00');
+    const db=(b.trade_date||'')+(b.entry_time||'00:00');
+    return da.localeCompare(db);
+  });
   let run=0,peak=0,maxDD=0;
-  [...f].reverse().forEach(t=>{run+=parseFloat(t.pnl)||0;if(run>peak)peak=run;const dd=peak-run;if(dd>maxDD)maxDD=dd});
+  ddSorted.forEach(t=>{
+    run+=parseFloat(t.pnl)||0;
+    if(run>peak)peak=run;
+    const dd=peak-run;
+    if(dd>maxDD)maxDD=dd;
+  });
   setEl('a-dd',maxDD>0?'-$'+maxDD.toFixed(2):'$0.00');
   setEl('a-pf',s.pf===999?'∞ Perfect':s.pf.toFixed(2),s.pf===999?'#2DB87C':undefined);
 
@@ -2559,6 +2583,7 @@ function renderStats(){
     '</div>'+
     durRows.join(''):
     missingNote||'<span class="muted" style="font-size:12px">No duration data yet — enter entry & exit times when logging.</span>';
+  renderBiasAnalytics();
 }
 
 // -- PATIENCE TRACKER --
@@ -2938,6 +2963,57 @@ function renderPropChallenge(){
       '<button onclick="endChallenge(\'Passed\')" style="padding:8px;border-radius:5px;border:1px solid rgba(45,184,124,.3);background:rgba(45,184,124,.06);color:#2DB87C;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Mono,monospace">🏆 MARK PASSED</button>'+
       '<button onclick="endChallenge(\'Failed\')" style="padding:8px;border-radius:5px;border:1px solid rgba(224,82,82,.3);background:rgba(224,82,82,.06);color:#E05252;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Mono,monospace">✕ MARK FAILED</button>'+
     '</div>';
+}
+
+// -- BIAS ANALYTICS --
+function renderBiasAnalytics(){
+  const el=document.getElementById('a-bias-acc');
+  if(!el)return;
+  if(!weeklyBiasData.length){el.innerHTML='<span class="muted" style="font-size:12px">No weekly bias logged yet.</span>';return;}
+  const decided=weeklyBiasData.filter(w=>w.outcome);
+  const total=weeklyBiasData.length;
+  const correct=decided.filter(w=>w.outcome==='Correct').length;
+  const wrong=decided.filter(w=>w.outcome==='Wrong').length;
+  const pending=total-decided.length;
+  const acc=decided.length?Math.round(correct/decided.length*100):null;
+  const accCol=acc===null?'#555':acc>=60?'#2DB87C':acc>=40?'#C9A84C':'#E05252';
+  // Summary row
+  let html='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">'+
+    [
+      {lbl:'TOTAL',val:total,col:'#E2DDD6'},
+      {lbl:'CORRECT',val:correct,col:'#2DB87C'},
+      {lbl:'WRONG',val:wrong,col:'#E05252'},
+      {lbl:'ACCURACY',val:acc!==null?acc+'%':'—',col:accCol},
+    ].map(i=>'<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;padding:8px;text-align:center">'+
+      '<div style="font-size:8px;color:#444;font-family:DM Mono,monospace;margin-bottom:2px">'+i.lbl+'</div>'+
+      '<div style="font-size:15px;font-weight:700;color:'+i.col+';font-family:DM Mono,monospace">'+i.val+'</div>'+
+    '</div>').join('')+
+  '</div>';
+  // Accuracy bar
+  if(acc!==null){
+    html+='<div style="margin-bottom:12px">'+
+      '<div style="background:#151515;border-radius:99px;height:6px;overflow:hidden">'+
+        '<div style="width:'+acc+'%;height:100%;border-radius:99px;background:'+accCol+';transition:width .5s"></div>'+
+      '</div>'+
+      '<div style="font-size:9px;color:#444;font-family:DM Mono,monospace;margin-top:4px">'+acc+'% accuracy — target 70%+</div>'+
+    '</div>';
+  }
+  // Week by week list
+  html+=weeklyBiasData.slice(0,6).map(b=>{
+    const dirCol=b.direction==='Bullish'?'#2DB87C':b.direction==='Bearish'?'#E05252':'#C9A84C';
+    const dirIco=b.direction==='Bullish'?'▲':b.direction==='Bearish'?'▼':'—';
+    const outCol=b.outcome==='Correct'?'#2DB87C':b.outcome==='Wrong'?'#E05252':'#555';
+    const outTxt=b.outcome||'Pending';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #181818">'+
+      '<div>'+
+        '<div style="font-size:10px;font-weight:600;color:'+dirCol+';font-family:DM Mono,monospace">'+dirIco+' '+b.direction+'</div>'+
+        '<div style="font-size:9px;color:#444;font-family:DM Mono,monospace">Week of '+b.week_start+'</div>'+
+      '</div>'+
+      '<span style="font-size:10px;font-weight:700;color:'+outCol+';font-family:DM Mono,monospace">'+outTxt+'</span>'+
+    '</div>';
+  }).join('');
+  if(pending>0)html+='<div style="font-size:9px;color:#444;font-family:DM Mono,monospace;margin-top:6px">'+pending+' week'+(pending!==1?'s':'')+' pending outcome</div>';
+  el.innerHTML=html;
 }
 
 // -- SETTINGS --
