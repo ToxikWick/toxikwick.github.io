@@ -720,7 +720,7 @@ select option{background:#181818;color:#E2DDD6}
         <div class="arow"><span class="albl">Worst Trade</span><span class="aval" id="a-worst" style="color:#E05252">—</span></div>
         <div class="arow"><span class="albl">Avg Win</span><span class="aval" id="a-avgw" style="color:#2DB87C">—</span></div>
         <div class="arow"><span class="albl">Avg Loss</span><span class="aval" id="a-avgl" style="color:#E05252">—</span></div>
-        <div class="arow"><span class="albl">Win/Loss Ratio</span><span class="aval" id="a-rrr" style="color:#C9A84C">—</span></div>
+        <div class="arow"><span class="albl">Avg Win / Avg Loss</span><span class="aval" id="a-rrr" style="color:#C9A84C">—</span></div>
         <div class="arow"><span class="albl">Max Drawdown</span><span class="aval" id="a-dd" style="color:#E05252">—</span></div>
         <div class="arow"><span class="albl">Profit Factor</span><span class="aval" id="a-pf" style="color:#C9A84C">—</span></div>
       </div>
@@ -1765,7 +1765,7 @@ window.saveEditTrade=async function(){
 
 // -- UTILS --
 function today(){return new Date().toISOString().split('T')[0]}
-function weekStart(){const d=new Date();d.setDate(d.getDate()-d.getDay());return d.toISOString().split('T')[0]}
+function weekStart(){const d=new Date();const dow=d.getDay();d.setDate(d.getDate()-(dow===0?6:dow-1));return d.toISOString().split('T')[0]}
 function fPer(arr,p){
   const t=today();
   const active=arr.filter(x=>!x.archived);
@@ -1831,7 +1831,7 @@ function renderDash(){
   const sw=document.getElementById('sw-w');const sl=document.getElementById('sw-loss');
   if(sw)sw.style.width=wp+'%';if(sl)sl.style.width=(100-wp)+'%';
   setEl('sw-l',s.cl>0?'Win '+s.wp.toFixed(0)+'%':'Win -');
-  setEl('sw-r',s.cl>0?'Loss '+(100-s.wp).toFixed(0)+'%':'Loss -');
+  setEl('sw-r',s.cl>0?'Loss '+(100-s.wp).toFixed(0)+'%'+(s.be>0?' · '+s.be+' BE':''):'Loss -');
   renderPatience(activeTrades);
   const rt=document.getElementById('recent-list');
   const list=f.slice(0,5);
@@ -2322,8 +2322,9 @@ function renderStats(){
   const avgW=wins.length?wins.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0)/wins.length:0;
   const avgL=losses.length?Math.abs(losses.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0)/losses.length):0;
   setEl('a-avgw',wins.length?'+$'+avgW.toFixed(2):'N/A');
-  setEl('a-avgl',losses.length?'-$'+avgL.toFixed(2):'N/A — no losses','#2DB87C');
-  setEl('a-rrr',avgL>0?(avgW/avgL).toFixed(2)+'R':'N/A — no losses','#2DB87C');
+  setEl('a-avgl',losses.length?'-$'+avgL.toFixed(2):'N/A — no losses',losses.length?'#E05252':'#2DB87C');
+  const rrRatio=avgL>0?avgW/avgL:null;
+  setEl('a-rrr',rrRatio!==null?rrRatio.toFixed(2)+'R':'N/A — no losses',rrRatio!==null?(rrRatio>=1?'#2DB87C':rrRatio>=0.7?'#C9A84C':'#E05252'):'#2DB87C');
   // Max drawdown — sort by trade_date + entry_time (chronological) for accuracy
   const ddSorted=[...f].sort((a,b)=>{
     const da=(a.trade_date||'')+(a.entry_time||'00:00');
@@ -2341,27 +2342,32 @@ function renderStats(){
   setEl('a-pf',s.pf===999?'∞ Perfect':s.pf.toFixed(2),s.pf===999?'#2DB87C':undefined);
 
   // Sessions
-  const sess={};f.forEach(t=>{if(!sess[t.session])sess[t.session]={tot:0,w:0,pnl:0,durs:[]};sess[t.session].tot++;if(t.result==='Win')sess[t.session].w++;sess[t.session].pnl+=parseFloat(t.pnl)||0;if(t.trade_duration)sess[t.session].durs.push(t.trade_duration)});
-  document.getElementById('a-sess').innerHTML=Object.entries(sess).map(([n,d])=>
-    '<div style="margin-bottom:6px"><div style="font-size:11px;font-weight:600;margin-bottom:1px">'+n+'</div><div style="font-size:10px;color:#444;font-family:DM Mono,monospace">'+d.tot+'T &middot; '+(d.tot?(d.w/d.tot*100).toFixed(0):'-')+'% WR &middot; <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div></div>'
-  ).join('')||'<span class="muted" style="font-size:12px">-</span>';
+  const sess={};f.forEach(t=>{if(!sess[t.session])sess[t.session]={tot:0,w:0,l:0,pnl:0,durs:[]};sess[t.session].tot++;if(t.result==='Win')sess[t.session].w++;if(t.result==='Loss')sess[t.session].l++;sess[t.session].pnl+=parseFloat(t.pnl)||0;if(t.trade_duration)sess[t.session].durs.push(t.trade_duration)});
+  document.getElementById('a-sess').innerHTML=Object.entries(sess).map(([n,d])=>{
+    const cl=d.w+d.l;const wr=cl>0?(d.w/cl*100).toFixed(0):'-';
+    return'<div style="margin-bottom:6px"><div style="font-size:11px;font-weight:600;margin-bottom:1px">'+n+'</div><div style="font-size:10px;color:#444;font-family:DM Mono,monospace">'+d.tot+'T &middot; '+wr+'% WR &middot; <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div></div>';
+  }).join('')||'<span class="muted" style="font-size:12px">-</span>';
   // TF
-  const tfs={};f.forEach(t=>{if(!tfs[t.timeframe])tfs[t.timeframe]={tot:0,w:0,pnl:0};tfs[t.timeframe].tot++;if(t.result==='Win')tfs[t.timeframe].w++;tfs[t.timeframe].pnl+=parseFloat(t.pnl)||0});
-  document.getElementById('a-tfs').innerHTML=Object.entries(tfs).map(([n,d])=>
-    '<div style="margin-bottom:6px"><div style="font-size:11px;font-weight:600;margin-bottom:1px">'+n+'</div><div style="font-size:10px;color:#444;font-family:DM Mono,monospace">'+d.tot+'T &middot; '+(d.tot?(d.w/d.tot*100).toFixed(0):'-')+'% WR &middot; <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div></div>'
-  ).join('')||'<span class="muted" style="font-size:12px">-</span>';
+  const tfs={};f.forEach(t=>{if(!tfs[t.timeframe])tfs[t.timeframe]={tot:0,w:0,l:0,pnl:0};tfs[t.timeframe].tot++;if(t.result==='Win')tfs[t.timeframe].w++;if(t.result==='Loss')tfs[t.timeframe].l++;tfs[t.timeframe].pnl+=parseFloat(t.pnl)||0});
+  document.getElementById('a-tfs').innerHTML=Object.entries(tfs).map(([n,d])=>{
+    const cl=d.w+d.l;const wr=cl>0?(d.w/cl*100).toFixed(0):'-';
+    return'<div style="margin-bottom:6px"><div style="font-size:11px;font-weight:600;margin-bottom:1px">'+n+'</div><div style="font-size:10px;color:#444;font-family:DM Mono,monospace">'+d.tot+'T &middot; '+wr+'% WR &middot; <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div></div>';
+  }).join('')||'<span class="muted" style="font-size:12px">-</span>';
   // Confluence impact
-  const cg={};f.forEach(t=>{const sc=t.confluence_score||0;if(!cg[sc])cg[sc]={tot:0,w:0,pnl:0};cg[sc].tot++;if(t.result==='Win')cg[sc].w++;cg[sc].pnl+=parseFloat(t.pnl)||0});
-  document.getElementById('a-conf').innerHTML=Object.entries(cg).sort((a,b)=>Number(b[0])-Number(a[0])).map(([sc,d])=>
-    '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #181818">'+dots(Number(sc),7)+'<div style="font-size:10px;font-family:DM Mono,monospace;color:#555">'+d.tot+'T &middot; '+(d.tot?(d.w/d.tot*100).toFixed(0):'-')+'% &middot; <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div></div>'
-  ).join('')||'-';
+  const cg={};f.forEach(t=>{const sc=t.confluence_score||0;if(!cg[sc])cg[sc]={tot:0,w:0,l:0,pnl:0};cg[sc].tot++;if(t.result==='Win')cg[sc].w++;if(t.result==='Loss')cg[sc].l++;cg[sc].pnl+=parseFloat(t.pnl)||0});
+  document.getElementById('a-conf').innerHTML=Object.entries(cg).sort((a,b)=>Number(b[0])-Number(a[0])).map(([sc,d])=>{
+    const cl=d.w+d.l;const wr=cl>0?(d.w/cl*100).toFixed(0):'-';
+    return'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #181818">'+dots(Number(sc),7)+'<div style="font-size:10px;font-family:DM Mono,monospace;color:#555">'+d.tot+'T &middot; '+wr+'% &middot; <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div></div>';
+  }).join('')||'-';
   // Checklist heatmap
   const hmap=CLBLS.map(lbl=>{
     const key='OK '+lbl;
     const chk=f.filter(t=>(t.notes||'').includes(key));
     const uchk=f.filter(t=>!(t.notes||'').includes(key));
-    const cwr=chk.length?(chk.filter(t=>t.result==='Win').length/chk.length*100):null;
-    const uwr=uchk.length?(uchk.filter(t=>t.result==='Win').length/uchk.length*100):null;
+    const chkCl=chk.filter(t=>t.result==='Win'||t.result==='Loss').length;
+    const uchkCl=uchk.filter(t=>t.result==='Win'||t.result==='Loss').length;
+    const cwr=chkCl>0?(chk.filter(t=>t.result==='Win').length/chkCl*100):null;
+    const uwr=uchkCl>0?(uchk.filter(t=>t.result==='Win').length/uchkCl*100):null;
     return{lbl,chk:chk.length,uchk:uchk.length,cwr,uwr};
   });
   const hmEl=document.getElementById('a-heatmap');
@@ -2393,13 +2399,14 @@ function renderStats(){
       discTrades.forEach(t=>{const d=parseMetaTag(t.notes).disc||5;if(byScore[d])byScore[d].push(t)});
       const lbls={1:'Broke rules',2:'Struggled',3:'Mostly OK',4:'Strong',5:'Locked In'};
       discEl.innerHTML=Object.entries(byScore).reverse().filter(([_,arr])=>arr.length).map(([sc,arr])=>{
-        const wr=arr.length?(arr.filter(t=>t.result==='Win').length/arr.length*100):0;
+        const cl=arr.filter(t=>t.result==='Win'||t.result==='Loss').length;
+        const wr=cl>0?(arr.filter(t=>t.result==='Win').length/cl*100):0;
         const pnl=arr.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0);
-        const col=wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252';
+        const col=cl>0?(wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252'):'#444';
         return'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #181818">'+
           '<div><div style="font-size:11px;color:#E2DDD6;font-weight:600">'+discStars(parseInt(sc))+' <span style="color:#555;font-weight:400;font-size:10px">'+lbls[sc]+'</span></div>'+
           '<div style="font-size:9px;color:#333;font-family:DM Mono,monospace;margin-top:1px">'+arr.length+' trade'+(arr.length!==1?'s':'')+'</div></div>'+
-          '<div style="text-align:right"><div style="font-size:12px;font-weight:700;color:'+col+';font-family:DM Mono,monospace">'+wr.toFixed(0)+'% WR</div>'+
+          '<div style="text-align:right"><div style="font-size:12px;font-weight:700;color:'+col+';font-family:DM Mono,monospace">'+(cl>0?wr.toFixed(0)+'% WR':'-')+'</div>'+
           '<div style="font-size:10px;color:'+pc(pnl)+';font-family:DM Mono,monospace">'+fp(pnl)+'</div></div></div>';
       }).join('');
     }
@@ -2415,17 +2422,17 @@ function renderStats(){
     const eMap={};eTrades.forEach(t=>{
       let e=parseMetaTag(t.notes).emotion;
       if(emotionRemap[e])e=emotionRemap[e]; // remap old → new
-      if(!eMap[e])eMap[e]={tot:0,w:0,pnl:0};
-      eMap[e].tot++;if(t.result==='Win')eMap[e].w++;eMap[e].pnl+=parseFloat(t.pnl)||0;
+      if(!eMap[e])eMap[e]={tot:0,w:0,l:0,pnl:0};
+      eMap[e].tot++;if(t.result==='Win')eMap[e].w++;if(t.result==='Loss')eMap[e].l++;eMap[e].pnl+=parseFloat(t.pnl)||0;
     });
     const order=['Locked In','Confident','Neutral','On Edge','Distracted','Chasing'];
     const sorted=order.filter(k=>eMap[k]); // only show current emotions, no legacy ones
       emotionEl.innerHTML=sorted.map(e=>{
-        const d=eMap[e];const wr=d.tot?(d.w/d.tot*100):0;const col=emotionColor(e);const wrCol=wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252';
+        const d=eMap[e];const cl=d.w+d.l;const wr=cl>0?(d.w/cl*100):0;const col=emotionColor(e);const wrCol=cl>0?(wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252'):'#444';
         return'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #181818">'+
           '<div><span style="font-size:12px;color:'+col+';font-weight:600">'+e+'</span>'+
           '<span style="font-size:9px;color:#333;font-family:DM Mono,monospace;margin-left:7px">'+d.tot+' trade'+(d.tot!==1?'s':'')+'</span></div>'+
-          '<div style="text-align:right"><div style="font-size:12px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+wr.toFixed(0)+'% WR</div>'+
+          '<div style="text-align:right"><div style="font-size:12px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+(cl>0?wr.toFixed(0)+'% WR':'-')+'</div>'+
           '<div style="font-size:10px;color:'+pc(d.pnl)+';font-family:DM Mono,monospace">'+fp(d.pnl)+'</div></div></div>';
       }).join('');
     }
@@ -2433,15 +2440,15 @@ function renderStats(){
   // ── Direction breakdown (Long vs Short) ──
   const dirEl=document.getElementById('a-dir');
   if(dirEl){
-    const dirMap={Long:{tot:0,w:0,pnl:0},Short:{tot:0,w:0,pnl:0}};
-    f.forEach(t=>{const d=t.direction;if(dirMap[d]){dirMap[d].tot++;if(t.result==='Win')dirMap[d].w++;dirMap[d].pnl+=parseFloat(t.pnl)||0;}});
+    const dirMap={Long:{tot:0,w:0,l:0,pnl:0},Short:{tot:0,w:0,l:0,pnl:0}};
+    f.forEach(t=>{const d=t.direction;if(dirMap[d]){dirMap[d].tot++;if(t.result==='Win')dirMap[d].w++;if(t.result==='Loss')dirMap[d].l++;dirMap[d].pnl+=parseFloat(t.pnl)||0;}});
     dirEl.innerHTML=Object.entries(dirMap).filter(([_,d])=>d.tot>0).map(([dir,d])=>{
-      const wr=d.tot?(d.w/d.tot*100):0;const wrCol=wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252';
+      const cl=d.w+d.l;const wr=cl>0?(d.w/cl*100):0;const wrCol=cl>0?(wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252'):'#444';
       const dirCol=dir==='Long'?'#2DB87C':'#E05252';
       return '<div style="margin-bottom:8px">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'+
           '<span style="font-size:12px;font-weight:700;color:'+dirCol+'">'+dir+'</span>'+
-          '<span style="font-size:11px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+wr.toFixed(0)+'% WR</span>'+
+          '<span style="font-size:11px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+(cl>0?wr.toFixed(0)+'% WR':'-')+'</span>'+
         '</div>'+
         '<div style="font-size:10px;color:#444;font-family:DM Mono,monospace;margin-bottom:4px">'+d.tot+'T · <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div>'+
         '<div style="background:#131313;border-radius:99px;height:5px;overflow:hidden">'+
@@ -2458,15 +2465,15 @@ function renderStats(){
     f.forEach(t=>{
       const dow=new Date(t.trade_date+'T12:00:00').getDay();
       const k=days[dow];
-      if(!dowMap[k])dowMap[k]={tot:0,w:0,pnl:0,ord:dow};
-      dowMap[k].tot++;if(t.result==='Win')dowMap[k].w++;dowMap[k].pnl+=parseFloat(t.pnl)||0;
+      if(!dowMap[k])dowMap[k]={tot:0,w:0,l:0,pnl:0,ord:dow};
+      dowMap[k].tot++;if(t.result==='Win')dowMap[k].w++;if(t.result==='Loss')dowMap[k].l++;dowMap[k].pnl+=parseFloat(t.pnl)||0;
     });
     dowEl.innerHTML=Object.entries(dowMap).sort((a,b)=>a[1].ord-b[1].ord).map(([day,d])=>{
-      const wr=d.tot?(d.w/d.tot*100):0;const wrCol=wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252';
+      const cl=d.w+d.l;const wr=cl>0?(d.w/cl*100):0;const wrCol=cl>0?(wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252'):'#444';
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #181818">'+
         '<span style="font-size:11px;font-weight:600;color:#E2DDD6">'+day+'</span>'+
         '<div style="text-align:right">'+
-          '<div style="font-size:11px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+wr.toFixed(0)+'% WR</div>'+
+          '<div style="font-size:11px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+(cl>0?wr.toFixed(0)+'% WR':'-')+'</div>'+
           '<div style="font-size:9px;color:#444;font-family:DM Mono,monospace">'+d.tot+'T · <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div>'+
         '</div></div>';
     }).join('')||'<span class="muted" style="font-size:12px">No data</span>';
