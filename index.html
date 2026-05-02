@@ -1417,7 +1417,7 @@ window.handleSave=function(){
   else saveTrade();
 };
 
-// -- SAVE MULTI TRADE --
+// -- SAVE MULTI TRADE (saves as ONE grouped trade with total P&L) --
 window.saveMultiTrade=async function(){
   const btn=document.getElementById('save-btn');
   // Validate at least entry 1 has price + SL
@@ -1441,56 +1441,72 @@ window.saveMultiTrade=async function(){
   const confScore=CKEYS.filter(k=>document.querySelector('.ci[data-k="'+k+'"]')?.classList.contains('on')).length;
   const confTag=confScore>0?'\n['+CLBLS.filter((_,i)=>document.querySelector('.ci[data-k="'+CKEYS[i]+'"]')?.classList.contains('on')).map(l=>'OK '+l).join('|')+']':'';
 
-  const trades_to_save=[];
+  // Collect all filled entries
+  const filled=[];
   for(let n=1;n<=3;n++){
     const en=document.getElementById('me-entry-'+n).value;
-    if(!en)continue; // skip empty entries
+    if(!en)continue;
     const sl=document.getElementById('me-sl-'+n).value;
     const ex=document.getElementById('me-exit-'+n).value;
     const etime=document.getElementById('me-etime-'+n).value;
     const xtime=document.getElementById('me-xtime-'+n).value;
     const lots=parseFloat(document.getElementById('me-lots-'+n).value)||0.01;
-    const result=document.getElementById('me-result-'+n).value;
-    const dur=calcDuration(etime,xtime);
-    // Calculate pnl
-    const enf=parseFloat(en);const exf=ex?parseFloat(ex):null;
+    const enf=parseFloat(en);
+    const exf=ex?parseFloat(ex):null;
+    // P&L per entry: diff * lots * 100
     let pnl=0;
     if(exf){const diff=dir==='Long'?(exf-enf):(enf-exf);pnl=Math.round(diff*lots*100*100)/100;}
-    if(result==='Loss'&&pnl>0)pnl=-pnl;
-    if(result==='Win'&&pnl<0)pnl=-pnl;
-    if(result==='BE')pnl=0;
-    const metaTag=buildMetaTag(setupId,String(n),emotion,exec,unexec,disc);
-    const notes=metaTag+(rawNotes?'\n'+rawNotes:'')+confTag;
-    trades_to_save.push({
-      user_id:CU.id,
-      trade_date:date,session,timeframe:tf,direction:dir,
-      entry:enf,
-      stop_loss:sl?parseFloat(sl):null,
-      exit_price:exf,take_profit:exf,
-      lot_size:lots,
-      entry_time:etime||null,exit_time:xtime||null,
-      trade_duration:dur||null,
-      result,pnl,notes,
-      confluence_score:confScore
-    });
+    filled.push({n,enf,exf,sl:sl?parseFloat(sl):null,lots,etime,xtime,pnl});
   }
-  if(!trades_to_save.length){flash('err','No valid entries to save.');btn.disabled=false;btn.textContent='SAVE ALL 3 ENTRIES';return;}
-  // Chart upload for multi-entry (applies to all entries in this setup)
+  if(!filled.length){flash('err','No valid entries to save.');btn.disabled=false;btn.textContent='SAVE ALL 3 ENTRIES';return;}
+
+  // Aggregate into ONE trade
+  const totalPnl=Math.round(filled.reduce((s,e)=>s+e.pnl,0)*100)/100;
+  const totalLots=Math.round(filled.reduce((s,e)=>s+e.lots,0)*100)/100;
+  const totalResult=totalPnl>0?'Win':totalPnl<0?'Loss':'BE';
+  const primary=filled[0];
+  const last=filled[filled.length-1];
+  // Entry time = first entry, exit time = last exit
+  const groupEntryTime=primary.etime||null;
+  const groupExitTime=last.xtime||null;
+  const groupDur=calcDuration(groupEntryTime,groupExitTime);
+  // Build entry breakdown for notes
+  const breakdown=filled.map(e=>'E'+e.n+': '+(e.enf)+(e.exf?'→'+e.exf:'')+' '+e.lots+'lot '+(e.pnl>=0?'+':'')+e.pnl.toFixed(2)).join(' | ');
+  const metaTag=buildMetaTag(setupId,filled.length>1?'1-'+filled.length:'1',emotion,exec,unexec,disc);
+  const notes=metaTag+'\n[Multi('+filled.length+'): '+breakdown+']'+(rawNotes?'\n'+rawNotes:'')+confTag;
+
+  const grouped={
+    user_id:CU.id,
+    trade_date:date,session,timeframe:tf,direction:dir,
+    entry:primary.enf,
+    stop_loss:primary.sl,
+    exit_price:last.exf||null,
+    take_profit:last.exf||null,
+    lot_size:totalLots,
+    entry_time:groupEntryTime,
+    exit_time:groupExitTime,
+    trade_duration:groupDur||null,
+    result:totalResult,
+    pnl:totalPnl,
+    notes,
+    confluence_score:confScore
+  };
+
+  // Chart upload
   const chartFileM=document.getElementById('f-chart-file').files[0];
-  let sharedChartUrl=null;
   if(chartFileM){
     btn.textContent='UPLOADING CHART...';
-    sharedChartUrl=await uploadChart(chartFileM,'trades');
+    const url=await uploadChart(chartFileM,'trades');
+    if(url)grouped.chart_url=url;
   }
-  if(sharedChartUrl){trades_to_save.forEach(t=>t.chart_url=sharedChartUrl);}
-  const{data,error}=await DB.from('trades').insert(trades_to_save);
+  const{data,error}=await DB.from('trades').insert(grouped);
   if(error){flash('err','Save failed: '+error.message);btn.disabled=false;btn.textContent='SAVE ALL 3 ENTRIES';return;}
-  trades=[...(data||[]),...trades];
+  trades=[data[0],...trades];
   removeChart();
   renderDash();renderHist();renderStats();
   resetForm();
   setLogMode('single');
-  flash('ok',trades_to_save.length+' entries saved successfully!');
+  flash('ok',filled.length+'-entry grouped trade saved! Total P&L: '+(totalPnl>=0?'+':'')+totalPnl.toFixed(2));
   btn.disabled=false;btn.textContent='SAVE ALL 3 ENTRIES';
 };
 
@@ -1613,7 +1629,8 @@ async function saveTrade(){
   if(propChallenge&&trade.result==='Win'&&trade.entry_time&&trade.exit_time){
     const[eh,em]=trade.entry_time.split(':').map(Number);
     const[xh,xm]=trade.exit_time.split(':').map(Number);
-    const holdMins=(xh*60+xm)-(eh*60+em);
+    let holdMins=(xh*60+xm)-(eh*60+em);
+    if(holdMins<0)holdMins+=1440; // handle midnight crossing
     if(holdMins<2){
       flash('err','⚠ Hold time violation — winning trade held less than 2 minutes. Prop firm rule breach!');
       btn.disabled=false;btn.textContent='SAVE TRADE';return;
