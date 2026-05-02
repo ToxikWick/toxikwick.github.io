@@ -2252,7 +2252,21 @@ function accBlock(id,label,sub,tradeArr,innerHtml){
   const s=calcS(tradeArr);
   const pnlCol=s.tp>=0?'#2DB87C':'#E05252';
   const wr=s.cl>0?s.wr.toFixed(0)+'%':'-%';
-  const body=innerHtml!==undefined?innerHtml:(tradeArr.length?groupTradesForDisplay(tradeArr).map(item=>item.type==='group'?multiTradeCard(item):item.type==='newgroup'?newGroupCard(item.trade):tradeCard(item.trade)).join(''):'<div style="text-align:center;padding:14px;color:#333;font-size:12px">No trades logged</div>');
+  const body=innerHtml!==undefined?innerHtml:(tradeArr.length?(()=>{
+    try{
+      return groupTradesForDisplay(tradeArr).map(item=>{
+        try{
+          if(item.type==='group')return multiTradeCard(item);
+          if(item.type==='newgroup')return newGroupCard(item.trade);
+          return tradeCard(item.trade);
+        }catch(e){
+          console.error('Card render error:',e,item);
+          // Fallback: render as plain tradeCard
+          try{return tradeCard(item.trade||item.trades?.[0]);}catch(e2){return '';}
+        }
+      }).join('');
+    }catch(e){console.error('groupTradesForDisplay error:',e);return '<div style="text-align:center;padding:14px;color:#E05252;font-size:12px">Render error — check console</div>';}
+  })():'<div style="text-align:center;padding:14px;color:#333;font-size:12px">No trades logged</div>');
   return '<div style="margin-bottom:7px">'+
     '<div class="acc-hdr" data-id="'+id+'" onclick="toggleAcc(this)">'+
     '<div><div style="font-size:13px;font-weight:600;color:#E2DDD6">'+label+'</div>'+
@@ -2284,6 +2298,7 @@ function renderHist(){
   const list=document.getElementById('hist-list');
   const lbl={'daily':'Daily — This Week','weekly':'Weekly','monthly':'Monthly','alltime':'All Time'};
   setEl('hist-count',(active.length)+' Trade'+(active.length!==1?'s':'')+' · '+lbl[hPer]);
+  try{
 
   if(hPer==='daily'){
     const weekDates=getCurrentWeekDates();
@@ -2360,6 +2375,10 @@ function renderHist(){
     }).join('');
     return accBlock('at-y-'+year,year,'',yt,inner);
   }).join('');
+  }catch(e){
+    console.error('renderHist crash:',e);
+    list.innerHTML='<div style="text-align:center;padding:20px;color:#E05252;font-size:11px">History failed to render. Open console for details.</div>';
+  }
 }
 
 // -- RENDER ANALYTICS --
