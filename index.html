@@ -1777,16 +1777,56 @@ function fPer(arr,p){
 }
 function pLbl(p){const t=today();if(p==='today')return'Today · '+t;if(p==='week')return'Week from '+weekStart();if(p==='month')return'Month · '+t.substring(0,7);if(p==='year')return'Year · '+t.substring(0,4);return'All Time'}
 function calcS(arr){
-  const w=arr.filter(t=>t.result==='Win');
-  const l=arr.filter(t=>t.result==='Loss');
-  const b=arr.filter(t=>t.result==='BE');
-  const cl=w.length+l.length;
-  const tp=arr.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0);
-  const gp=w.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0);
-  const gl=l.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0);
-  const wr=cl>0?(w.length/cl)*100:0;
-  const pf=gl!==0?Math.abs(gp/gl):(gp>0?999:0);
-  return{total:arr.length,wins:w.length,losses:l.length,be:b.length,cl,tp,gp,gl,wr,pf,wp:cl>0?(w.length/cl)*100:0};
+  // Separate trades by result type
+  const w = arr.filter(t => t.result === 'Win');
+  const l = arr.filter(t => t.result === 'Loss');
+  const b = arr.filter(t => t.result === 'BE');
+
+  // Closed trades = wins + losses only. BE is excluded from win rate calculation.
+  const cl = w.length + l.length;
+
+  // Total P&L: sum across ALL trades including BE
+  const tp = arr.reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0);
+
+  // Gross profit: only count positive P&L from winning trades.
+  // Math.max guards against a Win trade that somehow has a negative pnl (data inconsistency).
+  const gp = w.reduce((sum, t) => sum + Math.max(parseFloat(t.pnl) || 0, 0), 0);
+
+  // Gross loss: only count negative P&L from losing trades (stored as a negative number).
+  // Math.min guards against a Loss trade that somehow has a positive pnl (data inconsistency).
+  const gl = l.reduce((sum, t) => sum + Math.min(parseFloat(t.pnl) || 0, 0), 0);
+
+  // Win rate: wins / (wins + losses) * 100. BE trades are NOT counted.
+  // Returns 0 if no closed trades yet.
+  const wr = cl > 0 ? (w.length / cl) * 100 : 0;
+
+  // Profit Factor = Gross Profit / |Gross Loss|
+  // gl is negative, so we use Math.abs(gl).
+  // If no losses but profit exists → Infinity (caller displays as ∞).
+  // If no profit at all → 0.
+  let pf;
+  if (gl < 0) {
+    pf = gp / Math.abs(gl);
+  } else if (gp > 0) {
+    pf = Infinity; // Perfect: profit with zero losses
+  } else {
+    pf = 0; // No profit and no loss (all BE, or no trades)
+  }
+
+  return {
+    total: arr.length,   // all trades in the array
+    wins: w.length,      // winning trades
+    losses: l.length,    // losing trades
+    be: b.length,        // break-even trades
+    closed: cl,          // wins + losses (BE excluded) — primary name per spec
+    cl,                  // alias of closed — kept so existing callers don't break
+    tp,                  // total P&L (all trades, including BE)
+    gp,                  // gross profit (wins only, always >= 0)
+    gl,                  // gross loss  (losses only, always <= 0)
+    wr,                  // win rate % = wins / (wins + losses) * 100
+    pf,                  // profit factor: gp / |gl|, Infinity if no losses, 0 if no profit
+    wp: wr               // alias of wr — kept so existing callers don't break
+  };
 }
 function fp(v){const n=parseFloat(v)||0;return(n>=0?'+':'-')+'$'+Math.abs(n).toFixed(2)}
 function pc(v){return parseFloat(v)>=0?'#2DB87C':'#E05252'}
@@ -1812,7 +1852,7 @@ function renderDash(){
   setEl('h-pnl',fp(all.tp),pc(all.tp));
   setEl('h-gp','+$'+all.gp.toFixed(2));
   setEl('h-gl','-$'+Math.abs(all.gl).toFixed(2));
-  setEl('h-pf',all.pf===999?'inf':all.pf.toFixed(2));
+  setEl('h-pf', !isFinite(all.pf) ? '∞' : all.pf.toFixed(2));
   setEl('h-tot',activeTrades.length);
   const f=fPer(activeTrades,dPer);const s=calcS(f);const wrC=wc(s.wr);
   const lbl={'today':'Today','week':'This Week','month':'This Month','year':'This Year','all':'All Time'};
@@ -2210,7 +2250,7 @@ function renderStats(){
         {lbl:'TRADES',val:s.total,col:'#E2DDD6'},
         {lbl:'WIN RATE',val:(s.cl>0?s.wr.toFixed(1)+'%':'-'),col:wrCol},
         {lbl:'P&L',val:fp(s.tp),col:pc(s.tp)},
-        {lbl:'PROFIT FACTOR',val:s.pf===999?'∞':s.pf.toFixed(2),col:s.pf>=1?'#2DB87C':'#E05252'},
+        {lbl:'PROFIT FACTOR',val:!isFinite(s.pf)?'∞':s.pf.toFixed(2),col:s.pf>=1?'#2DB87C':'#E05252'},
       ];
       sumEl.innerHTML=items.map(i=>'<div style="background:#111;border:1px solid #1C1C1C;border-radius:7px;padding:9px 8px;text-align:center">'+
         '<div style="font-size:8px;color:#333;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">'+i.lbl+'</div>'+
@@ -2339,7 +2379,7 @@ function renderStats(){
     if(dd>maxDD)maxDD=dd;
   });
   setEl('a-dd',maxDD>0?'-$'+maxDD.toFixed(2):'$0.00');
-  setEl('a-pf',s.pf===999?'∞ Perfect':s.pf.toFixed(2),s.pf===999?'#2DB87C':undefined);
+  setEl('a-pf', !isFinite(s.pf) ? '∞ Perfect' : s.pf.toFixed(2), !isFinite(s.pf) ? '#2DB87C' : undefined);
 
   // Sessions
   const sess={};f.forEach(t=>{if(!sess[t.session])sess[t.session]={tot:0,w:0,l:0,pnl:0,durs:[]};sess[t.session].tot++;if(t.result==='Win')sess[t.session].w++;if(t.result==='Loss')sess[t.session].l++;sess[t.session].pnl+=parseFloat(t.pnl)||0;if(t.trade_duration)sess[t.session].durs.push(t.trade_duration)});
