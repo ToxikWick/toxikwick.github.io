@@ -1965,7 +1965,7 @@ function groupTradesForDisplay(tradeArr){
   const items=[];
   Object.values(groups).forEach(gt=>{
     if(gt.length>1){
-      // Sort by entry number
+      // Old-style: 3 separate DB rows, sort by entry number
       gt.sort((a,b)=>{
         const na=parseInt(parseMetaTag(a.notes).entryNum)||1;
         const nb=parseInt(parseMetaTag(b.notes).entryNum)||1;
@@ -1973,8 +1973,13 @@ function groupTradesForDisplay(tradeArr){
       });
       items.push({type:'group',trades:gt});
     } else {
-      // Only 1 trade in group — treat as single
-      singles.push(gt[0]);
+      // Single DB row — check if it's a new-style grouped trade
+      const t=gt[0];
+      if(t.notes&&t.notes.includes('[Multi(')){
+        items.push({type:'newgroup',trade:t});
+      } else {
+        singles.push(t);
+      }
     }
   });
   singles.forEach(t=>items.push({type:'single',trade:t}));
@@ -2079,6 +2084,103 @@ function multiTradeCard(group){
   '</div>';
 }
 
+// -- NEW-STYLE SINGLE-ROW GROUPED TRADE CARD --
+function newGroupCard(t){
+  const meta=parseMetaTag(t.notes);
+  const col=gc(t.result);
+  const totalPnl=parseFloat(t.pnl)||0;
+  const durTag=t.trade_duration?'<span class="dur-tag">'+t.trade_duration+'</span>':'';
+  const lot=t.lot_size?' · '+t.lot_size+' lot':'';
+
+  // ── Parse [Multi(N): E1:...| E2:...|E3:...] from notes ──
+  const multiMatch=(t.notes||'').match(/\[Multi\((\d+)\):\s*([\s\S]*?)\]/);
+  const numEntries=multiMatch?parseInt(multiMatch[1]):1;
+  let entryRows='';
+  if(multiMatch){
+    const breakdown=multiMatch[2];
+    // Format: "E1: 3280.0→3295.0 0.01lot +15.00 | E2: ..."
+    const re=/E(\d+):\s*([\d.]+)(?:→([\d.]+))?\s+([\d.]+)lot\s+([+\-][\d.]+)/g;
+    let m;
+    while((m=re.exec(breakdown))!==null){
+      const eNum=m[1],entryP=m[2],exitP=m[3],lots=m[4],epnl=parseFloat(m[5]);
+      const ec=epnl>0?'#2DB87C':epnl<0?'#E05252':'#888';
+      const er=epnl>0?'Win':epnl<0?'Loss':'BE';
+      entryRows+='<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-left:2px solid '+ec+'44;border-radius:5px;padding:8px 10px;margin-bottom:6px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'+
+          '<span style="font-size:10px;font-weight:600;color:#888;font-family:DM Mono,monospace">Entry '+eNum+'</span>'+
+          '<div style="display:flex;align-items:center;gap:6px">'+
+            '<span style="font-size:11px;font-weight:700;color:'+ec+';font-family:DM Mono,monospace">'+(epnl>=0?'+':'')+epnl.toFixed(2)+'</span>'+
+            '<span class="badge" style="background:'+ec+'22;color:'+ec+';border:1px solid '+ec+'44;font-size:8px;padding:1px 6px">'+er+'</span>'+
+          '</div>'+
+        '</div>'+
+        '<div class="hprice-grid">'+
+          '<div><div class="hprice-lbl">Entry</div><div class="hprice-val">'+entryP+'</div></div>'+
+          (exitP?'<div><div class="hprice-lbl">Exit</div><div class="hprice-val">'+exitP+'</div></div>':'')+
+          '<div><div class="hprice-lbl">Lots</div><div class="hprice-val">'+lots+'</div></div>'+
+        '</div>'+
+      '</div>';
+    }
+  }
+
+  // ── Strip meta, multi tag, and conf from notes for display ──
+  const cleanNotes=stripMetaAndConf((t.notes||'').replace(/\n?\[Multi\(\d+\):[^\]]*\]/,'').trim());
+  const NOTE_LIMIT=160;
+  const formattedNotes=cleanNotes?(()=>{
+    const lines=cleanNotes.split('\n').filter(l=>l.trim()).map(l=>'<div style="margin-bottom:3px">'+l+'</div>').join('');
+    if(cleanNotes.length<=NOTE_LIMIT)return lines;
+    const uid='rm'+Math.random().toString(36).slice(2,7);
+    const short=cleanNotes.slice(0,NOTE_LIMIT);
+    const shortLines=short.split('\n').filter(l=>l.trim()).map(l=>'<div style="margin-bottom:3px">'+l+'</div>').join('');
+    return '<div id="s'+uid+'">'+shortLines+'<span style="color:#555">…</span> <span onclick="document.getElementById(\'s'+uid+'\').style.display=\'none\';document.getElementById(\'f'+uid+'\').style.display=\'block\';" style="color:#C9A84C;font-size:9px;cursor:pointer;font-family:DM Mono,monospace">READ MORE</span></div>'+
+      '<div id="f'+uid+'" style="display:none">'+lines+'<span onclick="document.getElementById(\'f'+uid+'\').style.display=\'none\';document.getElementById(\'s'+uid+'\').style.display=\'block\';" style="color:#C9A84C;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;display:block;margin-top:4px">SHOW LESS</span></div>';
+  })():'';
+
+  // ── Conf badges ──
+  let confStr='';
+  const confMatch=(t.notes||'').match(/\n?\[([^\]]+)\]$/);
+  if(confMatch&&!confMatch[1].startsWith('Multi('))confStr=confMatch[1];
+  const confBadges=confStr?'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+confStr.split(',').map(c=>'<span style="font-size:9px;padding:2px 7px;border-radius:3px;background:rgba(45,184,124,.07);color:#2DB87C;border:1px solid rgba(45,184,124,.18)">'+c.trim()+'</span>').join('')+'</div>':'';
+
+  // ── Entry time row ──
+  const timLine=(t.entry_time||t.exit_time)?'<div style="font-size:9px;color:#888;font-family:DM Mono,monospace;margin-bottom:6px">'+(t.entry_time?'In: '+t.entry_time:'-')+' → '+(t.exit_time?'Out: '+t.exit_time:'-')+'</div>':'';
+
+  // ── Meta chips ──
+  const metaChips='<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">'+
+    (meta.setupId?'<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:rgba(201,168,76,.08);color:#C9A84C;border:1px solid rgba(201,168,76,.2);font-family:DM Mono,monospace">#'+meta.setupId+'</span>':'')+
+    '<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:rgba(201,168,76,.06);color:#C9A84C;border:1px solid rgba(201,168,76,.15);font-family:DM Mono,monospace">'+numEntries+'-Entry Setup</span>'+
+    (meta.emotion?'<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:#111;color:'+emotionColor(meta.emotion)+';border:1px solid #1E1E1E">🧠 '+meta.emotion+'</span>':'')+
+    (meta.disc&&meta.disc!==5?'<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:#111;border:1px solid #1C1C1C">'+discStars(meta.disc)+'</span>':'')+
+    '<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:'+(meta.exec>=80?'rgba(45,184,124,.07)':meta.exec>=60?'rgba(201,168,76,.07)':'rgba(224,82,82,.07)')+';color:'+(meta.exec>=80?'#2DB87C':meta.exec>=60?'#C9A84C':'#E05252')+';border:1px solid '+(meta.exec>=80?'rgba(45,184,124,.2)':meta.exec>=60?'rgba(201,168,76,.2)':'rgba(224,82,82,.2)')+';font-family:DM Mono,monospace">⚡ '+meta.exec+'% exec</span>'+
+  '</div>'+
+  (meta.exec<100&&meta.unexec?'<div style="font-size:10px;color:#555;background:rgba(224,82,82,.04);border:1px solid rgba(224,82,82,.1);border-radius:5px;padding:5px 9px;margin-bottom:7px"><span style="color:#E05252;font-weight:600">Unexecuted '+(100-meta.exec)+'%:</span> '+meta.unexec+'</div>':'');
+
+  const gid='grp'+Math.random().toString(36).slice(2,7);
+  return '<div class="hcard" style="border-left:3px solid '+col+'33">'+
+    // ── HEADER ROW ──
+    '<div onclick="(function(){var b=document.getElementById(\'gb-'+gid+'\');var a=document.getElementById(\'ga-'+gid+'\');var open=b.style.display===\'none\';b.style.display=open?\'block\':\'none\';a.textContent=open?\'▴\':\'▾\';})();" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;cursor:pointer">'+
+      '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">'+sessChip(t.session)+dirChip(t.direction)+'<span style="font-size:9px;color:#888;font-family:DM Mono,monospace">'+t.timeframe+lot+'</span>'+durTag+'</div>'+
+      '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'+
+        '<span style="font-size:13px;font-weight:700;color:'+pc(totalPnl)+';font-family:DM Mono,monospace">'+fp(totalPnl)+'</span>'+
+        '<span class="badge" style="background:'+col+'22;color:'+col+';border:1px solid '+col+'44">'+t.result+'</span>'+
+        '<span id="ga-'+gid+'" style="color:#444;font-size:11px">▾</span>'+
+      '</div>'+
+    '</div>'+
+    '<div style="font-weight:600;font-size:11px;color:#888;margin-bottom:4px">'+t.trade_date+'</div>'+
+    timLine+metaChips+
+    // ── COLLAPSIBLE BODY ──
+    '<div id="gb-'+gid+'" style="display:none">'+
+      entryRows+
+      (t.chart_url?'<div style="margin-top:8px"><img src="'+t.chart_url+'" onclick="var i=this;i.style.maxHeight=i.style.maxHeight===\'none\'?\'100px\':\'none\'" style="width:100%;max-height:100px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #1C1C1C" title="Tap to expand chart"></div>':'')+
+      (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
+      confBadges+
+      '<div style="display:flex;gap:6px;margin-top:8px">'+
+        '<button onclick="openEditTrade(\''+t.id+'\')" style="flex:1;font-size:10px;color:#C9A84C;background:transparent;border:1px solid rgba(201,168,76,.25);border-radius:4px;padding:5px;cursor:pointer">✏ Edit</button>'+
+        '<div id="del-'+t.id+'" style="flex:1"><button class="btn-del" style="width:100%" onclick="confirmDel(\''+t.id+'\')">Delete</button></div>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+
 function tradeCard(t){
   const col=gc(t.result);
   const lot=t.lot_size?' · '+t.lot_size+' lot':'';
@@ -2150,7 +2252,7 @@ function accBlock(id,label,sub,tradeArr,innerHtml){
   const s=calcS(tradeArr);
   const pnlCol=s.tp>=0?'#2DB87C':'#E05252';
   const wr=s.cl>0?s.wr.toFixed(0)+'%':'-%';
-  const body=innerHtml!==undefined?innerHtml:(tradeArr.length?groupTradesForDisplay(tradeArr).map(item=>item.type==='group'?multiTradeCard(item):tradeCard(item.trade)).join(''):'<div style="text-align:center;padding:14px;color:#333;font-size:12px">No trades logged</div>');
+  const body=innerHtml!==undefined?innerHtml:(tradeArr.length?groupTradesForDisplay(tradeArr).map(item=>item.type==='group'?multiTradeCard(item):item.type==='newgroup'?newGroupCard(item.trade):tradeCard(item.trade)).join(''):'<div style="text-align:center;padding:14px;color:#333;font-size:12px">No trades logged</div>');
   return '<div style="margin-bottom:7px">'+
     '<div class="acc-hdr" data-id="'+id+'" onclick="toggleAcc(this)">'+
     '<div><div style="font-size:13px;font-weight:600;color:#E2DDD6">'+label+'</div>'+
