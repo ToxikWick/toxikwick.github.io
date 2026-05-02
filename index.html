@@ -1417,7 +1417,7 @@ window.handleSave=function(){
   else saveTrade();
 };
 
-// -- SAVE MULTI TRADE (saves as ONE grouped trade with total P&L) --
+// -- SAVE MULTI TRADE --
 window.saveMultiTrade=async function(){
   const btn=document.getElementById('save-btn');
   // Validate at least entry 1 has price + SL
@@ -1441,72 +1441,56 @@ window.saveMultiTrade=async function(){
   const confScore=CKEYS.filter(k=>document.querySelector('.ci[data-k="'+k+'"]')?.classList.contains('on')).length;
   const confTag=confScore>0?'\n['+CLBLS.filter((_,i)=>document.querySelector('.ci[data-k="'+CKEYS[i]+'"]')?.classList.contains('on')).map(l=>'OK '+l).join('|')+']':'';
 
-  // Collect all filled entries
-  const filled=[];
+  const trades_to_save=[];
   for(let n=1;n<=3;n++){
     const en=document.getElementById('me-entry-'+n).value;
-    if(!en)continue;
+    if(!en)continue; // skip empty entries
     const sl=document.getElementById('me-sl-'+n).value;
     const ex=document.getElementById('me-exit-'+n).value;
     const etime=document.getElementById('me-etime-'+n).value;
     const xtime=document.getElementById('me-xtime-'+n).value;
     const lots=parseFloat(document.getElementById('me-lots-'+n).value)||0.01;
-    const enf=parseFloat(en);
-    const exf=ex?parseFloat(ex):null;
-    // P&L per entry: diff * lots * 100
+    const result=document.getElementById('me-result-'+n).value;
+    const dur=calcDuration(etime,xtime);
+    // Calculate pnl
+    const enf=parseFloat(en);const exf=ex?parseFloat(ex):null;
     let pnl=0;
     if(exf){const diff=dir==='Long'?(exf-enf):(enf-exf);pnl=Math.round(diff*lots*100*100)/100;}
-    filled.push({n,enf,exf,sl:sl?parseFloat(sl):null,lots,etime,xtime,pnl});
+    if(result==='Loss'&&pnl>0)pnl=-pnl;
+    if(result==='Win'&&pnl<0)pnl=-pnl;
+    if(result==='BE')pnl=0;
+    const metaTag=buildMetaTag(setupId,String(n),emotion,exec,unexec,disc);
+    const notes=metaTag+(rawNotes?'\n'+rawNotes:'')+confTag;
+    trades_to_save.push({
+      user_id:CU.id,
+      trade_date:date,session,timeframe:tf,direction:dir,
+      entry:enf,
+      stop_loss:sl?parseFloat(sl):null,
+      exit_price:exf,take_profit:exf,
+      lot_size:lots,
+      entry_time:etime||null,exit_time:xtime||null,
+      trade_duration:dur||null,
+      result,pnl,notes,
+      confluence_score:confScore
+    });
   }
-  if(!filled.length){flash('err','No valid entries to save.');btn.disabled=false;btn.textContent='SAVE ALL 3 ENTRIES';return;}
-
-  // Aggregate into ONE trade
-  const totalPnl=Math.round(filled.reduce((s,e)=>s+e.pnl,0)*100)/100;
-  const totalLots=Math.round(filled.reduce((s,e)=>s+e.lots,0)*100)/100;
-  const totalResult=totalPnl>0?'Win':totalPnl<0?'Loss':'BE';
-  const primary=filled[0];
-  const last=filled[filled.length-1];
-  // Entry time = first entry, exit time = last exit
-  const groupEntryTime=primary.etime||null;
-  const groupExitTime=last.xtime||null;
-  const groupDur=calcDuration(groupEntryTime,groupExitTime);
-  // Build entry breakdown for notes
-  const breakdown=filled.map(e=>'E'+e.n+': '+(e.enf)+(e.exf?'→'+e.exf:'')+' '+e.lots+'lot '+(e.pnl>=0?'+':'')+e.pnl.toFixed(2)).join(' | ');
-  const metaTag=buildMetaTag(setupId,filled.length>1?'1-'+filled.length:'1',emotion,exec,unexec,disc);
-  const notes=metaTag+'\n[Multi('+filled.length+'): '+breakdown+']'+(rawNotes?'\n'+rawNotes:'')+confTag;
-
-  const grouped={
-    user_id:CU.id,
-    trade_date:date,session,timeframe:tf,direction:dir,
-    entry:primary.enf,
-    stop_loss:primary.sl,
-    exit_price:last.exf||null,
-    take_profit:last.exf||null,
-    lot_size:totalLots,
-    entry_time:groupEntryTime,
-    exit_time:groupExitTime,
-    trade_duration:groupDur||null,
-    result:totalResult,
-    pnl:totalPnl,
-    notes,
-    confluence_score:confScore
-  };
-
-  // Chart upload
+  if(!trades_to_save.length){flash('err','No valid entries to save.');btn.disabled=false;btn.textContent='SAVE ALL 3 ENTRIES';return;}
+  // Chart upload for multi-entry (applies to all entries in this setup)
   const chartFileM=document.getElementById('f-chart-file').files[0];
+  let sharedChartUrl=null;
   if(chartFileM){
     btn.textContent='UPLOADING CHART...';
-    const url=await uploadChart(chartFileM,'trades');
-    if(url)grouped.chart_url=url;
+    sharedChartUrl=await uploadChart(chartFileM,'trades');
   }
-  const{data,error}=await DB.from('trades').insert(grouped);
+  if(sharedChartUrl){trades_to_save.forEach(t=>t.chart_url=sharedChartUrl);}
+  const{data,error}=await DB.from('trades').insert(trades_to_save);
   if(error){flash('err','Save failed: '+error.message);btn.disabled=false;btn.textContent='SAVE ALL 3 ENTRIES';return;}
-  trades=[data[0],...trades];
+  trades=[...(data||[]),...trades];
   removeChart();
   renderDash();renderHist();renderStats();
   resetForm();
   setLogMode('single');
-  flash('ok',filled.length+'-entry grouped trade saved! Total P&L: '+(totalPnl>=0?'+':'')+totalPnl.toFixed(2));
+  flash('ok',trades_to_save.length+' entries saved successfully!');
   btn.disabled=false;btn.textContent='SAVE ALL 3 ENTRIES';
 };
 
@@ -1629,8 +1613,7 @@ async function saveTrade(){
   if(propChallenge&&trade.result==='Win'&&trade.entry_time&&trade.exit_time){
     const[eh,em]=trade.entry_time.split(':').map(Number);
     const[xh,xm]=trade.exit_time.split(':').map(Number);
-    let holdMins=(xh*60+xm)-(eh*60+em);
-    if(holdMins<0)holdMins+=1440; // handle midnight crossing
+    const holdMins=(xh*60+xm)-(eh*60+em);
     if(holdMins<2){
       flash('err','⚠ Hold time violation — winning trade held less than 2 minutes. Prop firm rule breach!');
       btn.disabled=false;btn.textContent='SAVE TRADE';return;
@@ -1965,7 +1948,7 @@ function groupTradesForDisplay(tradeArr){
   const items=[];
   Object.values(groups).forEach(gt=>{
     if(gt.length>1){
-      // Old-style: 3 separate DB rows, sort by entry number
+      // Sort by entry number
       gt.sort((a,b)=>{
         const na=parseInt(parseMetaTag(a.notes).entryNum)||1;
         const nb=parseInt(parseMetaTag(b.notes).entryNum)||1;
@@ -1973,13 +1956,8 @@ function groupTradesForDisplay(tradeArr){
       });
       items.push({type:'group',trades:gt});
     } else {
-      // Single DB row — check if it's a new-style grouped trade
-      const t=gt[0];
-      if(t.notes&&t.notes.includes('[Multi(')){
-        items.push({type:'newgroup',trade:t});
-      } else {
-        singles.push(t);
-      }
+      // Only 1 trade in group — treat as single
+      singles.push(gt[0]);
     }
   });
   singles.forEach(t=>items.push({type:'single',trade:t}));
@@ -2077,106 +2055,8 @@ function multiTradeCard(group){
     // ── COLLAPSIBLE BODY ──
     '<div id="gb-'+gid+'" style="display:none">'+
       entryRows+
-      (first.chart_url?'<div style="margin-top:8px"><img src="'+first.chart_url+'" onclick="var i=this;i.style.maxHeight=i.style.maxHeight===\'none\'?\'100px\':\'none\'" style="width:100%;max-height:100px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #1C1C1C" title="Tap to expand chart"></div>':'')+
       (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
       confBadges+
-    '</div>'+
-  '</div>';
-}
-
-// -- NEW-STYLE SINGLE-ROW GROUPED TRADE CARD --
-function newGroupCard(t){
-  const meta=parseMetaTag(t.notes);
-  const col=gc(t.result);
-  const totalPnl=parseFloat(t.pnl)||0;
-  const durTag=t.trade_duration?'<span class="dur-tag">'+t.trade_duration+'</span>':'';
-  const lot=t.lot_size?' · '+t.lot_size+' lot':'';
-
-  // ── Parse [Multi(N): E1:...| E2:...|E3:...] from notes ──
-  const multiMatch=(t.notes||'').match(/\[Multi\((\d+)\):\s*([\s\S]*?)\]/);
-  const numEntries=multiMatch?parseInt(multiMatch[1]):1;
-  let entryRows='';
-  if(multiMatch){
-    const breakdown=multiMatch[2];
-    // Format: "E1: 3280.0→3295.0 0.01lot +15.00 | E2: ..."
-    const re=/E(\d+):\s*([\d.]+)(?:→([\d.]+))?\s+([\d.]+)lot\s+([+\-][\d.]+)/g;
-    let m;
-    while((m=re.exec(breakdown))!==null){
-      const eNum=m[1],entryP=m[2],exitP=m[3],lots=m[4],epnl=parseFloat(m[5]);
-      const ec=epnl>0?'#2DB87C':epnl<0?'#E05252':'#888';
-      const er=epnl>0?'Win':epnl<0?'Loss':'BE';
-      entryRows+='<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-left:2px solid '+ec+'44;border-radius:5px;padding:8px 10px;margin-bottom:6px">'+
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'+
-          '<span style="font-size:10px;font-weight:600;color:#888;font-family:DM Mono,monospace">Entry '+eNum+'</span>'+
-          '<div style="display:flex;align-items:center;gap:6px">'+
-            '<span style="font-size:11px;font-weight:700;color:'+ec+';font-family:DM Mono,monospace">'+(epnl>=0?'+':'')+epnl.toFixed(2)+'</span>'+
-            '<span class="badge" style="background:'+ec+'22;color:'+ec+';border:1px solid '+ec+'44;font-size:8px;padding:1px 6px">'+er+'</span>'+
-          '</div>'+
-        '</div>'+
-        '<div class="hprice-grid">'+
-          '<div><div class="hprice-lbl">Entry</div><div class="hprice-val">'+entryP+'</div></div>'+
-          (exitP?'<div><div class="hprice-lbl">Exit</div><div class="hprice-val">'+exitP+'</div></div>':'')+
-          '<div><div class="hprice-lbl">Lots</div><div class="hprice-val">'+lots+'</div></div>'+
-        '</div>'+
-      '</div>';
-    }
-  }
-
-  // ── Strip meta, multi tag, and conf from notes for display ──
-  const cleanNotes=stripMetaAndConf((t.notes||'').replace(/\n?\[Multi\(\d+\):[^\]]*\]/,'').trim());
-  const NOTE_LIMIT=160;
-  const formattedNotes=cleanNotes?(()=>{
-    const lines=cleanNotes.split('\n').filter(l=>l.trim()).map(l=>'<div style="margin-bottom:3px">'+l+'</div>').join('');
-    if(cleanNotes.length<=NOTE_LIMIT)return lines;
-    const uid='rm'+Math.random().toString(36).slice(2,7);
-    const short=cleanNotes.slice(0,NOTE_LIMIT);
-    const shortLines=short.split('\n').filter(l=>l.trim()).map(l=>'<div style="margin-bottom:3px">'+l+'</div>').join('');
-    return '<div id="s'+uid+'">'+shortLines+'<span style="color:#555">…</span> <span onclick="document.getElementById(\'s'+uid+'\').style.display=\'none\';document.getElementById(\'f'+uid+'\').style.display=\'block\';" style="color:#C9A84C;font-size:9px;cursor:pointer;font-family:DM Mono,monospace">READ MORE</span></div>'+
-      '<div id="f'+uid+'" style="display:none">'+lines+'<span onclick="document.getElementById(\'f'+uid+'\').style.display=\'none\';document.getElementById(\'s'+uid+'\').style.display=\'block\';" style="color:#C9A84C;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;display:block;margin-top:4px">SHOW LESS</span></div>';
-  })():'';
-
-  // ── Conf badges ──
-  let confStr='';
-  const confMatch=(t.notes||'').match(/\n?\[([^\]]+)\]$/);
-  if(confMatch&&!confMatch[1].startsWith('Multi('))confStr=confMatch[1];
-  const confBadges=confStr?'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+confStr.split(',').map(c=>'<span style="font-size:9px;padding:2px 7px;border-radius:3px;background:rgba(45,184,124,.07);color:#2DB87C;border:1px solid rgba(45,184,124,.18)">'+c.trim()+'</span>').join('')+'</div>':'';
-
-  // ── Entry time row ──
-  const timLine=(t.entry_time||t.exit_time)?'<div style="font-size:9px;color:#888;font-family:DM Mono,monospace;margin-bottom:6px">'+(t.entry_time?'In: '+t.entry_time:'-')+' → '+(t.exit_time?'Out: '+t.exit_time:'-')+'</div>':'';
-
-  // ── Meta chips ──
-  const metaChips='<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">'+
-    (meta.setupId?'<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:rgba(201,168,76,.08);color:#C9A84C;border:1px solid rgba(201,168,76,.2);font-family:DM Mono,monospace">#'+meta.setupId+'</span>':'')+
-    '<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:rgba(201,168,76,.06);color:#C9A84C;border:1px solid rgba(201,168,76,.15);font-family:DM Mono,monospace">'+numEntries+'-Entry Setup</span>'+
-    (meta.emotion?'<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:#111;color:'+emotionColor(meta.emotion)+';border:1px solid #1E1E1E">🧠 '+meta.emotion+'</span>':'')+
-    (meta.disc&&meta.disc!==5?'<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:#111;border:1px solid #1C1C1C">'+discStars(meta.disc)+'</span>':'')+
-    '<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:'+(meta.exec>=80?'rgba(45,184,124,.07)':meta.exec>=60?'rgba(201,168,76,.07)':'rgba(224,82,82,.07)')+';color:'+(meta.exec>=80?'#2DB87C':meta.exec>=60?'#C9A84C':'#E05252')+';border:1px solid '+(meta.exec>=80?'rgba(45,184,124,.2)':meta.exec>=60?'rgba(201,168,76,.2)':'rgba(224,82,82,.2)')+';font-family:DM Mono,monospace">⚡ '+meta.exec+'% exec</span>'+
-  '</div>'+
-  (meta.exec<100&&meta.unexec?'<div style="font-size:10px;color:#555;background:rgba(224,82,82,.04);border:1px solid rgba(224,82,82,.1);border-radius:5px;padding:5px 9px;margin-bottom:7px"><span style="color:#E05252;font-weight:600">Unexecuted '+(100-meta.exec)+'%:</span> '+meta.unexec+'</div>':'');
-
-  const gid='grp'+Math.random().toString(36).slice(2,7);
-  return '<div class="hcard" style="border-left:3px solid '+col+'33">'+
-    // ── HEADER ROW ──
-    '<div onclick="(function(){var b=document.getElementById(\'gb-'+gid+'\');var a=document.getElementById(\'ga-'+gid+'\');var open=b.style.display===\'none\';b.style.display=open?\'block\':\'none\';a.textContent=open?\'▴\':\'▾\';})();" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;cursor:pointer">'+
-      '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">'+sessChip(t.session)+dirChip(t.direction)+'<span style="font-size:9px;color:#888;font-family:DM Mono,monospace">'+t.timeframe+lot+'</span>'+durTag+'</div>'+
-      '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'+
-        '<span style="font-size:13px;font-weight:700;color:'+pc(totalPnl)+';font-family:DM Mono,monospace">'+fp(totalPnl)+'</span>'+
-        '<span class="badge" style="background:'+col+'22;color:'+col+';border:1px solid '+col+'44">'+t.result+'</span>'+
-        '<span id="ga-'+gid+'" style="color:#444;font-size:11px">▾</span>'+
-      '</div>'+
-    '</div>'+
-    '<div style="font-weight:600;font-size:11px;color:#888;margin-bottom:4px">'+t.trade_date+'</div>'+
-    timLine+metaChips+
-    // ── COLLAPSIBLE BODY ──
-    '<div id="gb-'+gid+'" style="display:none">'+
-      entryRows+
-      (t.chart_url?'<div style="margin-top:8px"><img src="'+t.chart_url+'" onclick="var i=this;i.style.maxHeight=i.style.maxHeight===\'none\'?\'100px\':\'none\'" style="width:100%;max-height:100px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #1C1C1C" title="Tap to expand chart"></div>':'')+
-      (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
-      confBadges+
-      '<div style="display:flex;gap:6px;margin-top:8px">'+
-        '<button onclick="openEditTrade(\''+t.id+'\')" style="flex:1;font-size:10px;color:#C9A84C;background:transparent;border:1px solid rgba(201,168,76,.25);border-radius:4px;padding:5px;cursor:pointer">✏ Edit</button>'+
-        '<div id="del-'+t.id+'" style="flex:1"><button class="btn-del" style="width:100%" onclick="confirmDel(\''+t.id+'\')">Delete</button></div>'+
-      '</div>'+
     '</div>'+
   '</div>';
 }
@@ -2252,21 +2132,7 @@ function accBlock(id,label,sub,tradeArr,innerHtml){
   const s=calcS(tradeArr);
   const pnlCol=s.tp>=0?'#2DB87C':'#E05252';
   const wr=s.cl>0?s.wr.toFixed(0)+'%':'-%';
-  const body=innerHtml!==undefined?innerHtml:(tradeArr.length?(()=>{
-    try{
-      return groupTradesForDisplay(tradeArr).map(item=>{
-        try{
-          if(item.type==='group')return multiTradeCard(item);
-          if(item.type==='newgroup')return newGroupCard(item.trade);
-          return tradeCard(item.trade);
-        }catch(e){
-          console.error('Card render error:',e,item);
-          // Fallback: render as plain tradeCard
-          try{return tradeCard(item.trade||item.trades?.[0]);}catch(e2){return '';}
-        }
-      }).join('');
-    }catch(e){console.error('groupTradesForDisplay error:',e);return '<div style="text-align:center;padding:14px;color:#E05252;font-size:12px">Render error — check console</div>';}
-  })():'<div style="text-align:center;padding:14px;color:#333;font-size:12px">No trades logged</div>');
+  const body=innerHtml!==undefined?innerHtml:(tradeArr.length?groupTradesForDisplay(tradeArr).map(item=>item.type==='group'?multiTradeCard(item):tradeCard(item.trade)).join(''):'<div style="text-align:center;padding:14px;color:#333;font-size:12px">No trades logged</div>');
   return '<div style="margin-bottom:7px">'+
     '<div class="acc-hdr" data-id="'+id+'" onclick="toggleAcc(this)">'+
     '<div><div style="font-size:13px;font-weight:600;color:#E2DDD6">'+label+'</div>'+
@@ -2298,7 +2164,6 @@ function renderHist(){
   const list=document.getElementById('hist-list');
   const lbl={'daily':'Daily — This Week','weekly':'Weekly','monthly':'Monthly','alltime':'All Time'};
   setEl('hist-count',(active.length)+' Trade'+(active.length!==1?'s':'')+' · '+lbl[hPer]);
-  try{
 
   if(hPer==='daily'){
     const weekDates=getCurrentWeekDates();
@@ -2375,10 +2240,6 @@ function renderHist(){
     }).join('');
     return accBlock('at-y-'+year,year,'',yt,inner);
   }).join('');
-  }catch(e){
-    console.error('renderHist crash:',e);
-    list.innerHTML='<div style="text-align:center;padding:20px;color:#E05252;font-size:11px">History failed to render. Open console for details.</div>';
-  }
 }
 
 // -- RENDER ANALYTICS --
@@ -2517,29 +2378,21 @@ function renderStats(){
   setEl('a-avgl',losses.length?'-$'+avgL.toFixed(2):'N/A — no losses',losses.length?'#E05252':'#2DB87C');
   const rrRatio=avgL>0?avgW/avgL:null;
   setEl('a-rrr',rrRatio!==null?rrRatio.toFixed(2)+'R':'N/A — no losses',rrRatio!==null?(rrRatio>=1?'#2DB87C':rrRatio>=0.7?'#C9A84C':'#E05252'):'#2DB87C');
-  // Max Drawdown — robust version, accurate for all periods
-  // 1. Sort strictly chronologically: trade_date + entry_time (pad missing time to
-  //    '00:00') then created_at as the final tiebreaker so same-minute trades are
-  //    always in a deterministic order.
+  // Max drawdown — sort chronologically with tiebreaker for accuracy
   const ddSorted=[...f].sort((a,b)=>{
-    const ka=(a.trade_date||'0000-00-00')+' '+(a.entry_time||'00:00');
-    const kb=(b.trade_date||'0000-00-00')+' '+(b.entry_time||'00:00');
-    if(ka!==kb)return ka.localeCompare(kb);
-    return (a.created_at||'').localeCompare(b.created_at||'');
+    const da=(a.trade_date||'')+(a.entry_time||'00:00');
+    const db=(b.trade_date||'')+(b.entry_time||'00:00');
+    if(da!==db)return da.localeCompare(db);
+    return (a.created_at||'').localeCompare(b.created_at||''); // tiebreaker
   });
-  // 2. Walk trades in order, tracking running equity from a baseline of 0.
-  //    Peak = highest equity seen so far.
-  //    Drawdown at each step = peak − current equity (always >= 0 by definition).
-  //    maxDD = the largest such drop across the entire sequence.
-  let ddEquity=0,ddPeak=0,maxDD=0;
+  let run=0,peak=0,maxDD=0;
   ddSorted.forEach(t=>{
-    const pnl=parseFloat(t.pnl)||0;
-    ddEquity=Math.round((ddEquity+pnl)*100)/100; // round to cents to avoid float drift
-    if(ddEquity>ddPeak)ddPeak=ddEquity;
-    const drop=Math.round((ddPeak-ddEquity)*100)/100;
-    if(drop>maxDD)maxDD=drop;
+    run+=parseFloat(t.pnl)||0;
+    if(run>peak)peak=run;
+    const dd=peak-run;
+    if(dd>maxDD)maxDD=dd;
   });
-  setEl('a-dd',maxDD>0?'-$'+maxDD.toFixed(2):'$0.00',maxDD>0?'#E05252':'#2DB87C');
+  setEl('a-dd',maxDD>0?'-$'+maxDD.toFixed(2):'$0.00');
   // Profit Factor: ∞ (no losses + profit), green when >= 1, red when < 1
   const pfDisp=!isFinite(s.pf)?'∞ Perfect':s.pf.toFixed(2);
   const pfCol=!isFinite(s.pf)||s.pf>=1?'#2DB87C':'#E05252';
