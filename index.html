@@ -2072,6 +2072,7 @@ function multiTradeCard(group){
     // ── COLLAPSIBLE BODY ──
     '<div id="gb-'+gid+'" style="display:none">'+
       entryRows+
+      (first.chart_url?'<div style="margin-top:8px"><img src="'+first.chart_url+'" onclick="var i=this;i.style.maxHeight=i.style.maxHeight===\'none\'?\'100px\':\'none\'" style="width:100%;max-height:100px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #1C1C1C" title="Tap to expand chart"></div>':'')+
       (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
       confBadges+
     '</div>'+
@@ -2395,21 +2396,29 @@ function renderStats(){
   setEl('a-avgl',losses.length?'-$'+avgL.toFixed(2):'N/A — no losses',losses.length?'#E05252':'#2DB87C');
   const rrRatio=avgL>0?avgW/avgL:null;
   setEl('a-rrr',rrRatio!==null?rrRatio.toFixed(2)+'R':'N/A — no losses',rrRatio!==null?(rrRatio>=1?'#2DB87C':rrRatio>=0.7?'#C9A84C':'#E05252'):'#2DB87C');
-  // Max drawdown — sort chronologically with tiebreaker for accuracy
+  // Max Drawdown — robust version, accurate for all periods
+  // 1. Sort strictly chronologically: trade_date + entry_time (pad missing time to
+  //    '00:00') then created_at as the final tiebreaker so same-minute trades are
+  //    always in a deterministic order.
   const ddSorted=[...f].sort((a,b)=>{
-    const da=(a.trade_date||'')+(a.entry_time||'00:00');
-    const db=(b.trade_date||'')+(b.entry_time||'00:00');
-    if(da!==db)return da.localeCompare(db);
-    return (a.created_at||'').localeCompare(b.created_at||''); // tiebreaker
+    const ka=(a.trade_date||'0000-00-00')+' '+(a.entry_time||'00:00');
+    const kb=(b.trade_date||'0000-00-00')+' '+(b.entry_time||'00:00');
+    if(ka!==kb)return ka.localeCompare(kb);
+    return (a.created_at||'').localeCompare(b.created_at||'');
   });
-  let run=0,peak=0,maxDD=0;
+  // 2. Walk trades in order, tracking running equity from a baseline of 0.
+  //    Peak = highest equity seen so far.
+  //    Drawdown at each step = peak − current equity (always >= 0 by definition).
+  //    maxDD = the largest such drop across the entire sequence.
+  let ddEquity=0,ddPeak=0,maxDD=0;
   ddSorted.forEach(t=>{
-    run+=parseFloat(t.pnl)||0;
-    if(run>peak)peak=run;
-    const dd=peak-run;
-    if(dd>maxDD)maxDD=dd;
+    const pnl=parseFloat(t.pnl)||0;
+    ddEquity=Math.round((ddEquity+pnl)*100)/100; // round to cents to avoid float drift
+    if(ddEquity>ddPeak)ddPeak=ddEquity;
+    const drop=Math.round((ddPeak-ddEquity)*100)/100;
+    if(drop>maxDD)maxDD=drop;
   });
-  setEl('a-dd',maxDD>0?'-$'+maxDD.toFixed(2):'$0.00');
+  setEl('a-dd',maxDD>0?'-$'+maxDD.toFixed(2):'$0.00',maxDD>0?'#E05252':'#2DB87C');
   // Profit Factor: ∞ (no losses + profit), green when >= 1, red when < 1
   const pfDisp=!isFinite(s.pf)?'∞ Perfect':s.pf.toFixed(2);
   const pfCol=!isFinite(s.pf)||s.pf>=1?'#2DB87C':'#E05252';
