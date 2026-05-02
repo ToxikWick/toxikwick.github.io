@@ -2265,11 +2265,15 @@ function renderStats(){
       '</div>').join('');
     }
   }
-  // ── LIVE STREAK — always all-time, never filtered ──
+  // ── LIVE STREAK — always all-time, never filtered by period ──
+  // Uses ALL trades in the global array (including archived), sorted oldest→newest.
+  // created_at is used as a tiebreaker so same-date/same-time trades are always
+  // in a deterministic chronological order.
   const allSorted=[...trades].filter(t=>t.result!=='BE').sort((a,b)=>{
     const da=(a.trade_date||'')+(a.entry_time||'00:00');
     const db=(b.trade_date||'')+(b.entry_time||'00:00');
-    return da.localeCompare(db);
+    if(da!==db)return da.localeCompare(db);
+    return (a.created_at||'').localeCompare(b.created_at||''); // tiebreaker
   });
   let cs=0,ct='';
   for(let i=allSorted.length-1;i>=0;i--){
@@ -2280,10 +2284,12 @@ function renderStats(){
   }
 
   // ── PERIOD STATS — filtered by selected period ──
+  // Run history (best/worst streaks) uses the period filter, not all-time.
   const periodSorted=[...f].filter(t=>t.result!=='BE').sort((a,b)=>{
     const da=(a.trade_date||'')+(a.entry_time||'00:00');
     const db=(b.trade_date||'')+(b.entry_time||'00:00');
-    return da.localeCompare(db);
+    if(da!==db)return da.localeCompare(db);
+    return (a.created_at||'').localeCompare(b.created_at||''); // tiebreaker
   });
   let bestWin=0,worstLoss=0,curRun=0,curType='';
   const winRuns=[],lossRuns=[];
@@ -2372,11 +2378,12 @@ function renderStats(){
   setEl('a-avgl',losses.length?'-$'+avgL.toFixed(2):'N/A — no losses',losses.length?'#E05252':'#2DB87C');
   const rrRatio=avgL>0?avgW/avgL:null;
   setEl('a-rrr',rrRatio!==null?rrRatio.toFixed(2)+'R':'N/A — no losses',rrRatio!==null?(rrRatio>=1?'#2DB87C':rrRatio>=0.7?'#C9A84C':'#E05252'):'#2DB87C');
-  // Max drawdown — sort by trade_date + entry_time (chronological) for accuracy
+  // Max drawdown — sort chronologically with tiebreaker for accuracy
   const ddSorted=[...f].sort((a,b)=>{
     const da=(a.trade_date||'')+(a.entry_time||'00:00');
     const db=(b.trade_date||'')+(b.entry_time||'00:00');
-    return da.localeCompare(db);
+    if(da!==db)return da.localeCompare(db);
+    return (a.created_at||'').localeCompare(b.created_at||''); // tiebreaker
   });
   let run=0,peak=0,maxDD=0;
   ddSorted.forEach(t=>{
@@ -2386,7 +2393,10 @@ function renderStats(){
     if(dd>maxDD)maxDD=dd;
   });
   setEl('a-dd',maxDD>0?'-$'+maxDD.toFixed(2):'$0.00');
-  setEl('a-pf', !isFinite(s.pf) ? '∞ Perfect' : s.pf.toFixed(2), !isFinite(s.pf) ? '#2DB87C' : undefined);
+  // Profit Factor: ∞ (no losses + profit), green when >= 1, red when < 1
+  const pfDisp=!isFinite(s.pf)?'∞ Perfect':s.pf.toFixed(2);
+  const pfCol=!isFinite(s.pf)||s.pf>=1?'#2DB87C':'#E05252';
+  setEl('a-pf',pfDisp,pfCol);
 
   // Sessions
   const sess={};f.forEach(t=>{if(!sess[t.session])sess[t.session]={tot:0,w:0,l:0,pnl:0,durs:[]};sess[t.session].tot++;if(t.result==='Win')sess[t.session].w++;if(t.result==='Loss')sess[t.session].l++;sess[t.session].pnl+=parseFloat(t.pnl)||0;if(t.trade_duration)sess[t.session].durs.push(t.trade_duration)});
