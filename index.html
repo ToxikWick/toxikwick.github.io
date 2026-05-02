@@ -1929,14 +1929,16 @@ const MONTH_NAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','
 
 // -- GROUP MULTI-ENTRY TRADES FOR DISPLAY --
 function groupTradesForDisplay(tradeArr){
-  // Separate multi-entry (have entry=1/2/3 meta) from singles
+  // Separate multi-entry (have entry=1/2/3/4/5 meta) from singles
   const groups={};
   const singles=[];
   tradeArr.forEach(t=>{
     const meta=parseMetaTag(t.notes);
-    const en=parseInt(meta.entryNum)||0;
-    if(en>=1&&en<=3&&t.notes&&t.notes.includes('entry=')){
-      // Group key: date + session + direction + setupId (if any)
+    const enStr=meta.entryNum||'';
+    const en=parseInt(enStr)||0;
+    // Require entryNum to be a clean integer (rejects "1-3" style strings)
+    // and within valid range 1-5
+    if(en>=1&&en<=5&&String(en)===enStr.trim()&&t.notes&&t.notes.includes('entry=')){
       const key=[t.trade_date,t.session,t.direction,meta.setupId||''].join('|');
       if(!groups[key])groups[key]=[];
       groups[key].push(t);
@@ -1948,13 +1950,26 @@ function groupTradesForDisplay(tradeArr){
   const items=[];
   Object.values(groups).forEach(gt=>{
     if(gt.length>1){
-      // Sort by entry number
       gt.sort((a,b)=>{
         const na=parseInt(parseMetaTag(a.notes).entryNum)||1;
         const nb=parseInt(parseMetaTag(b.notes).entryNum)||1;
         return na-nb;
       });
-      items.push({type:'group',trades:gt});
+      // If duplicate entryNums exist, split into separate sub-groups (each is its own card)
+      const subGroups=[];
+      for(const t of gt){
+        const en=parseInt(parseMetaTag(t.notes).entryNum)||1;
+        let placed=false;
+        for(const sg of subGroups){
+          const takenNums=new Set(sg.map(x=>parseInt(parseMetaTag(x.notes).entryNum)||1));
+          if(!takenNums.has(en)){sg.push(t);placed=true;break;}
+        }
+        if(!placed)subGroups.push([t]);
+      }
+      for(const sg of subGroups){
+        if(sg.length>1)items.push({type:'group',trades:sg});
+        else singles.push(sg[0]);
+      }
     } else {
       // Only 1 trade in group — treat as single
       singles.push(gt[0]);
@@ -2055,7 +2070,6 @@ function multiTradeCard(group){
     // ── COLLAPSIBLE BODY ──
     '<div id="gb-'+gid+'" style="display:none">'+
       entryRows+
-      (first.chart_url?'<div style="margin-top:8px"><img src="'+first.chart_url+'" onclick="var i=this;i.style.maxHeight=i.style.maxHeight==\'none\'?\'100px\':\'none\'" style="width:100%;max-height:100px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #1C1C1C" title="Tap to expand chart"></div>':'')+
       (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
       confBadges+
     '</div>'+
