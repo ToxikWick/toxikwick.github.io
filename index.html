@@ -628,7 +628,7 @@ select option{background:#181818;color:#E2DDD6}
         <!-- UPDATED CONFLUENCE -->
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
           <span class="slabel" style="margin-bottom:0">SMC Checklist</span>
-          <span id="conf-score" style="font-size:11px;color:#C9A84C;font-family:'DM Mono',monospace;font-weight:700">0/6</span>
+          <span id="conf-score" style="font-size:11px;color:#C9A84C;font-family:'DM Mono',monospace;font-weight:700">0/7</span>
         </div>
         <div class="cgrid" id="cgrid"></div>
         <div class="divider"></div>
@@ -973,7 +973,9 @@ const DB={
         return fetch(url,{headers:getHeaders()}).then(r=>r.json()).then(d=>({data:d,error:null})).catch(e=>({data:null,error:e}));
       },
       insert:function(row){
-        return fetch(base,{method:'POST',headers:getHeaders(true),body:JSON.stringify(row)}).then(r=>r.json()).then(d=>({data:Array.isArray(d)?d:[d],error:null})).catch(e=>({data:null,error:e}));
+        return fetch(base,{method:'POST',headers:getHeaders(true),body:JSON.stringify(row)})
+          .then(r=>r.json().then(d=>r.ok?{data:Array.isArray(d)?d:[d],error:null}:{data:null,error:d}))
+          .catch(e=>({data:null,error:e}));
       },
       update:function(row,filter){
         return fetch(base+'?'+(filter||''),{method:'PATCH',headers:getHeaders(true),body:JSON.stringify(row)})
@@ -981,7 +983,9 @@ const DB={
           .catch(e=>({data:null,error:e}));
       },
       delete:function(filter){
-        return fetch(base+'?'+filter,{method:'DELETE',headers:getHeaders()}).then(r=>({data:null,error:null})).catch(e=>({data:null,error:e}));
+        return fetch(base+'?'+filter,{method:'DELETE',headers:getHeaders()})
+          .then(r=>r.ok?{data:null,error:null}:{data:null,error:{message:'Delete failed (HTTP '+r.status+')'}})
+          .catch(e=>({data:null,error:e}));
       }
     };
   }
@@ -1438,8 +1442,8 @@ window.saveMultiTrade=async function(){
   const disc=parseInt(document.getElementById('f-disc').value)||5;
   const rawNotes=document.getElementById('f-notes').value.trim();
   // Checklist
-  const confScore=CKEYS.filter(k=>document.querySelector('.ci[data-k="'+k+'"]')?.classList.contains('on')).length;
-  const confTag=confScore>0?'\n['+CLBLS.filter((_,i)=>document.querySelector('.ci[data-k="'+CKEYS[i]+'"]')?.classList.contains('on')).map(l=>'OK '+l).join('|')+']':'';
+  const confScore=CKEYS.filter(k=>document.getElementById('ci-'+k)?.classList.contains('on')).length;
+  const confTag=confScore>0?'\n['+CLBLS.filter((_,i)=>document.getElementById('ci-'+CKEYS[i])?.classList.contains('on')).map(l=>'OK '+l).join('|')+']':'';
 
   const trades_to_save=[];
   for(let n=1;n<=3;n++){
@@ -1671,8 +1675,10 @@ function resetForm(){
 window.confirmDel=id=>{const w=document.getElementById('del-'+id);if(w)w.innerHTML='<button class="btn-cf" onclick="doDel(\''+id+'\')">Confirm</button> <button class="btn-cx" onclick="cancelDel(\''+id+'\')">Cancel</button>'};
 window.cancelDel=id=>{const w=document.getElementById('del-'+id);if(w)w.innerHTML='<button class="btn-del" onclick="confirmDel(\''+id+'\')">Delete</button>'};
 window.doDel=async id=>{
-  await DB.from('trades').delete('id=eq.'+id);
+  const{error}=await DB.from('trades').delete('id=eq.'+id);
+  if(error){flash('err','Delete failed: '+error.message);return;}
   trades=trades.filter(t=>t.id!==id);renderDash();renderHist();renderStats();
+  flash('ok','Trade deleted.');
 };
 
 // -- EDIT TRADE --
@@ -3103,7 +3109,7 @@ window.openSettings=function(){
   closeMenu();
   document.getElementById('s-name').value=CP?.display_name||'';
   document.getElementById('s-bal').value=CP?.starting_balance||1000;
-  document.getElementById('s-info').textContent=(CU?.email||'')+' &middot; '+( CP?.role||'-');
+  document.getElementById('s-info').innerHTML=(CU?.email||'')+' &middot; '+( CP?.role||'-');
   if(CP?.role==='admin')checkUnassigned();
   openModal('m-settings');
 };
