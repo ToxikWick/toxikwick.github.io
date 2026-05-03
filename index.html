@@ -910,7 +910,10 @@ select option{background:#181818;color:#E2DDD6}
 
 <script>
 'use strict';
-// -- SUPABASE CONFIG (no external library needed) --
+
+// ============================================================
+// === SUPABASE CONFIG (REST API — no external library) ===
+// ============================================================
 const SB_URL='https://pewkiwknniphfwhnoxsv.supabase.co';
 const SB_KEY='sb_publishable_l4PTYKlCiPoVGkQZj0loWQ_JMHGkGd3';
 const AUTH_URL=SB_URL+'/auth/v1';
@@ -930,7 +933,7 @@ function getHeaders(isWrite){
   return h;
 }
 
-// Auth REST helpers
+// === AUTH REST HELPERS ===
 async function authRequest(path,body){
   const r=await fetch(AUTH_URL+path,{
     method:'POST',
@@ -943,7 +946,8 @@ async function authRequest(path,body){
 async function signIn(email,password){
   const d=await authRequest('/token?grant_type=password',{email,password});
   if(d.error||d.error_description)return{error:{message:d.error_description||d.error||'Sign in failed'}};
-  _session={access_token:d.access_token,user:d.user};
+  // Store full session including refresh token and expiry for auto-renewal
+  _session={access_token:d.access_token,refresh_token:d.refresh_token||null,expires_at:d.expires_at||null,user:d.user};
   localStorage.setItem('tw_session',JSON.stringify(_session));
   return{user:d.user};
 }
@@ -962,7 +966,26 @@ async function signOut(){
   localStorage.removeItem('tw_session');
 }
 
-// DB helpers (REST)
+// -- TOKEN REFRESH --
+// Silently renews the access token using the stored refresh_token.
+// Returns true if successful, false if the session should be cleared.
+async function refreshSession(){
+  if(!_session||!_session.refresh_token)return false;
+  try{
+    const d=await authRequest('/token?grant_type=refresh_token',{refresh_token:_session.refresh_token});
+    if(d.error||d.error_description||!d.access_token)return false;
+    _session={
+      access_token:d.access_token,
+      refresh_token:d.refresh_token||_session.refresh_token,
+      expires_at:d.expires_at||null,
+      user:d.user||_session.user
+    };
+    localStorage.setItem('tw_session',JSON.stringify(_session));
+    return true;
+  }catch(e){return false;}
+}
+
+// === DATABASE REST HELPERS ===
 const DB={
   from:function(table){
     const base=SB_URL+'/rest/v1/'+table;
@@ -991,13 +1014,19 @@ const DB={
   }
 };
 
+// ============================================================
+// === APP STATE ===
+// ============================================================
 let CU=null,CP=null,trades=[],archivePeriods=[],weeklyBiasData=[],propChallenge=null;
 let dPer='today',hPer='daily',aPer='month';
 
-// -- UPDATED CONFLUENCE (6 items) --
+// === SMC CONFLUENCE CHECKLIST CONFIG ===
 const CKEYS=['smc_presence','liquidity_sweep','sr_level','round_number','rejection_candle','continuation_candle','entry_sl_set'];
 const CLBLS=['Smart Money Presence','Liquidity Sweep','S/R Level','Round Number','Rejection Candle Closed','Continuation Candle Close','Entry & SL Set'];
 
+// ============================================================
+// === UI: SCREENS, NAVIGATION & USER MENU ===
+// ============================================================
 // -- SCREENS --
 function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('s-'+id).classList.add('active')}
 
@@ -1029,6 +1058,9 @@ function toggleMenu(){document.getElementById('udrop').classList.toggle('open')}
 function closeMenu(){document.getElementById('udrop').classList.remove('open')}
 document.addEventListener('click',e=>{if(!e.target.closest('.umenu'))closeMenu()});
 
+// ============================================================
+// === AUTH UI: LOGIN & REGISTER ===
+// ============================================================
 // -- AUTH TAB --
 function switchAuth(t){
   document.getElementById('form-login').style.display=t==='login'?'block':'none';
@@ -1075,6 +1107,9 @@ async function doRegister(){
   btn.disabled=false;btn.textContent='CREATE ACCOUNT';
 }
 
+// ============================================================
+// === APP INIT & DATA LOADING ===
+// ============================================================
 // -- LOGOUT --
 async function doLogout(){await signOut();CU=null;CP=null;trades=[];show('auth');document.getElementById('ql-fab').style.display='none';closeModal('m-settings');closeModal('m-admin')}
 
@@ -1102,10 +1137,22 @@ async function initApp(user){
   renderDash();renderHist();renderStats();renderArchive();loadRules();
 }
 
-// -- AUTH STATE - Supabase loads after page, so listen here --
-// Check for existing session on load
+// -- AUTH STATE CHECK --
+// On page load: if a saved session exists, check token expiry before loading the app.
+// If the token is expired or within 5 minutes of expiry, attempt a silent refresh first.
+// If the refresh fails (e.g. refresh_token itself expired), force re-login.
 if(_session&&_session.user){
-  initApp(_session.user);
+  const now=Math.floor(Date.now()/1000);
+  const exp=_session.expires_at||0;
+  if(exp&&now>=(exp-300)){
+    // Token expired or expiring soon — try to refresh silently
+    refreshSession().then(ok=>{
+      if(ok){initApp(_session.user);}
+      else{_session=null;localStorage.removeItem('tw_session');show('auth');}
+    }).catch(()=>{show('auth');});
+  } else {
+    initApp(_session.user);
+  }
 } else {
   show('auth');
 }
@@ -1244,6 +1291,9 @@ window.selectEditDisc=function(star){
 };
 
 
+// ============================================================
+// === MT5 PASTE PARSER ===
+// ============================================================
 // ── PASTE MT5 PARSER ──────────────────────────────────
 window.togglePastePanel=function(id){
   const panel=document.getElementById('paste-panel-'+id);
@@ -1372,6 +1422,9 @@ window.parseMT5=function(target){
     resEl.textContent='Error: '+e.message;
   }
 };
+// ============================================================
+// === LOG MODE & MULTI-ENTRY ===
+// ============================================================
 // -- LOG MODE --
 let logMode='single';
 window.setLogMode=function(mode){
@@ -1555,6 +1608,9 @@ function stripMetaAndConf(notes){
   return (notes||'').replace(/\{[^}]+\}/,'').replace(/\n?\[[^\]]+\]$/,'').trim();
 }
 
+// ============================================================
+// === SAVE TRADE ===
+// ============================================================
 // -- SAVE TRADE --
 async function saveTrade(){
   const en=document.getElementById('f-entry').value;
@@ -1671,6 +1727,9 @@ function resetForm(){
   document.getElementById('conf-score').textContent='0/7';
 }
 
+// ============================================================
+// === DELETE & EDIT TRADE ===
+// ============================================================
 // -- DELETE --
 window.confirmDel=id=>{const w=document.getElementById('del-'+id);if(w)w.innerHTML='<button class="btn-cf" onclick="doDel(\''+id+'\')">Confirm</button> <button class="btn-cx" onclick="cancelDel(\''+id+'\')">Cancel</button>'};
 window.cancelDel=id=>{const w=document.getElementById('del-'+id);if(w)w.innerHTML='<button class="btn-del" onclick="confirmDel(\''+id+'\')">Delete</button>'};
@@ -1769,6 +1828,9 @@ window.saveEditTrade=async function(){
   btn.disabled=false;btn.textContent='SAVE CHANGES';
 };
 
+// ============================================================
+// === UTILITY & CALCULATION FUNCTIONS ===
+// ============================================================
 // -- UTILS --
 function today(){return new Date().toISOString().split('T')[0]}
 function weekStart(){const d=new Date();const dow=d.getDay();d.setDate(d.getDate()-(dow===0?6:dow-1));return d.toISOString().split('T')[0]}
@@ -1848,6 +1910,9 @@ function flash(type,msg){const id=type==='err'?'ferr':'fok';document.getElementB
 function openModal(id){document.getElementById(id).style.display='flex'}
 function closeModal(id){document.getElementById(id).style.display='none'}
 
+// ============================================================
+// === RENDER: DASHBOARD ===
+// ============================================================
 // -- RENDER DASHBOARD --
 function renderDash(){
   const activeTrades=trades.filter(t=>!t.archived);
@@ -1888,6 +1953,9 @@ function renderDash(){
   renderPatience(activeTrades);
   const rt=document.getElementById('recent-list');
   const list=f.slice(0,5);
+  // Always render Weekly Bias and Prop Challenge regardless of trade count for the selected period
+  renderWeeklyBias();
+  renderPropChallenge();
   if(!list.length){rt.innerHTML='<span class="muted">No trades for this period.</span>';return}
   rt.innerHTML=list.map(t=>{
     const col=gc(t.result);
@@ -1895,10 +1963,11 @@ function renderDash(){
     const prices='<div style="font-size:9px;color:#333;font-family:DM Mono,monospace;margin-top:2px">Entry: '+t.entry+(t.exit_price?' → '+t.exit_price:'')+' · SL: '+t.stop_loss+'</div>';
     return'<div class="trow"><div style="flex:1"><div style="font-size:12px;font-weight:600;margin-bottom:1px">'+t.trade_date+' · '+t.session+' · '+t.timeframe+' · '+t.direction+'</div>'+tim+prices+'</div><div style="display:flex;gap:7px;align-items:center;flex-shrink:0"><span style="font-size:13px;font-weight:700;color:'+pc(t.pnl)+';font-family:DM Mono,monospace">'+fp(t.pnl)+'</span><span class="badge" style="background:'+col+'22;color:'+col+';border:1px solid '+col+'44">'+t.result+'</span></div></div>';
   }).join('');
-  renderWeeklyBias();
-  renderPropChallenge();
 }
 
+// ============================================================
+// === RENDER: HISTORY ===
+// ============================================================
 // -- HISTORY HELPERS --
 function getWeekNum(dateStr){
   const d=new Date(dateStr+'T12:00:00');
@@ -2266,6 +2335,9 @@ function renderHist(){
   }).join('');
 }
 
+// ============================================================
+// === RENDER: ANALYTICS ===
+// ============================================================
 // -- RENDER ANALYTICS --
 function renderStats(){
   const f=fPer(trades,aPer);
@@ -2674,6 +2746,9 @@ function renderStats(){
   renderBiasAnalytics();
 }
 
+// ============================================================
+// === RENDER: PATIENCE TRACKER ===
+// ============================================================
 // -- PATIENCE TRACKER --
 function toMins(dur){
   if(!dur)return null;
@@ -2777,6 +2852,9 @@ function renderPatience(allTrades){
   el.innerHTML=html;
 }
 
+// ============================================================
+// === EXPORT ===
+// ============================================================
 // -- EXPORT CSV --
 function exportCSV(){
   const f=fPer(trades,hPer);
@@ -2787,6 +2865,9 @@ function exportCSV(){
   const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='toxikwick-'+today()+'.csv';a.click();
 }
 
+// ============================================================
+// === CHART UPLOAD ===
+// ============================================================
 // -- CHART UPLOAD PREVIEW --
 window.previewChart=function(input){
   if(!input.files||!input.files[0])return;
@@ -2818,6 +2899,9 @@ window.removeBiasChart=function(){
   document.getElementById('bias-chart-remove').style.display='none';
 };
 
+// ============================================================
+// === WEEKLY BIAS ===
+// ============================================================
 // -- WEEKLY BIAS --
 function getWeekStart(date){
   const d=new Date(date||Date.now());
@@ -2919,6 +3003,9 @@ function renderWeeklyBias(){
   el.innerHTML=html;
 }
 
+// ============================================================
+// === PROP FIRM CHALLENGE ===
+// ============================================================
 // -- PROP FIRM CHALLENGE --
 window.openPropModal=function(){
   closeModal('m-settings');
@@ -3104,6 +3191,9 @@ function renderBiasAnalytics(){
   el.innerHTML=html;
 }
 
+// ============================================================
+// === SETTINGS & ADMIN ===
+// ============================================================
 // -- SETTINGS --
 window.openSettings=function(){
   closeMenu();
@@ -3139,6 +3229,9 @@ window.openAdmin=async function(){
     return'<div class="urow"><div style="flex:1;min-width:0;margin-right:10px"><div style="font-size:11px;font-weight:600;font-family:DM Mono,monospace;word-break:break-all">'+u.email+'</div><div style="font-size:10px;color:#333;margin-top:2px">'+(u.display_name||'-')+' &middot; '+u.created_at.split('T')[0]+'</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px"><span class="badge" style="background:'+col+'22;color:'+col+';border:1px solid '+col+'44">'+u.role.toUpperCase()+'</span>'+actions+'</div></div>';
   }).join('')+'<div style="font-size:10px;color:#1E1E1E;text-align:center;margin-top:10px;font-family:DM Mono,monospace">'+users.length+' total</div>';
 };
+// ============================================================
+// === RENDER: ARCHIVE ===
+// ============================================================
 // -- RENDER ARCHIVE --
 function renderArchive(){
   const el=document.getElementById('archive-list');
@@ -3308,7 +3401,10 @@ window.deleteArchive=async function(btnId){
   flash('ok','Deleted '+ids.length+' trades permanently.');
 };
 
-window.doReset=async function(type){
+// ============================================================
+// === RESET: ARCHIVE & WIPE ===
+// ============================================================
+
   if(type==='archive'){
     const newBal=parseFloat(document.getElementById('reset-bal').value);
     if(isNaN(newBal)||newBal<=0){flash('err','Enter a valid new balance.');return}
@@ -3357,10 +3453,14 @@ window.doReset=async function(type){
 
 window.changeRole=async(uid,role,btn)=>{
   btn.disabled=true;
-  await DB.from('profiles').update({role},'id=eq.'+uid);
+  const{error}=await DB.from('profiles').update({role},'id=eq.'+uid);
+  if(error){flash('err','Role update failed. Please try again.');btn.disabled=false;return;}
   window.openAdmin();
 };
 
+// ============================================================
+// === RULES ===
+// ============================================================
 // -- RULES --
 let rulesData=[];
 let ruleCat='all';
