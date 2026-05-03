@@ -3404,7 +3404,7 @@ window.deleteArchive=async function(btnId){
 // ============================================================
 // === RESET: ARCHIVE & WIPE ===
 // ============================================================
-
+window.doReset=async function(type){
   if(type==='archive'){
     const newBal=parseFloat(document.getElementById('reset-bal').value);
     if(isNaN(newBal)||newBal<=0){flash('err','Enter a valid new balance.');return}
