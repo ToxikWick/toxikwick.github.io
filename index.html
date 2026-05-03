@@ -1987,7 +1987,7 @@ function getCurrentWeekDates(){
   const mon=new Date(today);mon.setDate(today.getDate()-(dow===0?6:dow-1));
   return Array.from({length:5},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return d.toISOString().split('T')[0]});
 }
-// Returns false for Sunday (getDay()===0) — used to exclude Sunday from all history day groupings
+// Returns false for Sunday (getDay()===0) — excludes Sunday from all history day groupings
 function isWeekday(dateStr){return new Date(dateStr+'T12:00:00').getDay()!==0;}
 function groupByDate(arr){return arr.reduce((g,t)=>{(g[t.trade_date]=g[t.trade_date]||[]).push(t);return g},{});}
 function groupByWeek(arr){
@@ -2195,7 +2195,7 @@ function tradeCard(t){
     '<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:'+(meta.exec>=80?'rgba(45,184,124,.07)':meta.exec>=60?'rgba(201,168,76,.07)':'rgba(224,82,82,.07)')+';color:'+(meta.exec>=80?'#2DB87C':meta.exec>=60?'#C9A84C':'#E05252')+';border:1px solid '+(meta.exec>=80?'rgba(45,184,124,.2)':meta.exec>=60?'rgba(201,168,76,.2)':'rgba(224,82,82,.2)')+';font-family:DM Mono,monospace">⚡ '+meta.exec+'% exec</span>'+
     '</div>'+
     (meta.exec<100&&meta.unexec?'<div style="font-size:10px;color:#555;background:rgba(224,82,82,.04);border:1px solid rgba(224,82,82,.1);border-radius:5px;padding:5px 9px;margin-bottom:7px"><span style="color:#E05252;font-weight:600">Unexecuted '+(100-meta.exec)+'%:</span> '+meta.unexec+'</div>':'');
-  // Unique ID for collapsible body
+  // Unique ID for collapsible body — uses Math.random to avoid any DOM ID clashes
   const sid='sc'+Math.random().toString(36).slice(2,7);
   return '<div class="hcard" style="border-left:3px solid '+col+'33">'+
     // ── HEADER ROW (always visible, tap to collapse/expand) ──
@@ -2308,7 +2308,7 @@ function renderHist(){
           const d=new Date(date+'T12:00:00');
           return accBlock('md-'+date,d.toLocaleDateString('en',{weekday:'short',month:'short',day:'numeric'}),'',dt);
         }).join('');
-        return accBlock('mw-'+wk,'Week '+week,getWeekRange(year,week),wt,dInner);
+        return accBlock('mw-'+k+'-'+wk,'Week '+week,getWeekRange(year,week),wt,dInner);
       }).join('');
       return accBlock('m-'+k,MONTH_NAMES[month]+' '+year,'',mt,inner);
     }).join('');return;
@@ -2332,7 +2332,7 @@ function renderHist(){
           const d=new Date(date+'T12:00:00');
           return accBlock('at-d-'+date,d.toLocaleDateString('en',{weekday:'short',month:'short',day:'numeric'}),'',dt);
         }).join('');
-        return accBlock('at-w-'+wk,'Week '+week,getWeekRange(parseInt(year),week),wt,dInner);
+        return accBlock('at-w-'+mk+'-'+wk,'Week '+week,getWeekRange(parseInt(year),week),wt,dInner);
       }).join('');
       return accBlock('at-m-'+mk,MONTH_NAMES[month]+' '+year,'',mt,wInner);
     }).join('');
