@@ -1987,6 +1987,8 @@ function getCurrentWeekDates(){
   const mon=new Date(today);mon.setDate(today.getDate()-(dow===0?6:dow-1));
   return Array.from({length:5},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return d.toISOString().split('T')[0]});
 }
+// Returns false for Sunday (getDay()===0) — used to exclude Sunday from all history day groupings
+function isWeekday(dateStr){return new Date(dateStr+'T12:00:00').getDay()!==0;}
 function groupByDate(arr){return arr.reduce((g,t)=>{(g[t.trade_date]=g[t.trade_date]||[]).push(t);return g},{});}
 function groupByWeek(arr){
   return arr.reduce((g,t)=>{
@@ -2159,11 +2161,8 @@ function tradeCard(t){
   const lot=t.lot_size?' · '+t.lot_size+' lot':'';
   const durTag=t.trade_duration?'<span class="dur-tag">'+t.trade_duration+'</span>':'';
   const tim=(t.entry_time||t.exit_time)?'<div style="font-size:9px;color:#888;font-family:DM Mono,monospace;margin-bottom:4px">'+(t.entry_time?'In: '+t.entry_time:'-')+' → '+(t.exit_time?'Out: '+t.exit_time:'-')+'</div>':'';
-  // exit now shown as separate column in priceGrid
-  // Parse meta tag
   const meta=parseMetaTag(t.notes);
   const mainNotes=stripMetaAndConf(t.notes);
-  // Parse conf tag
   let confStr='';
   const confMatch=(t.notes||'').match(/\n?\[([^\]]+)\]$/);
   if(confMatch)confStr=confMatch[1];
@@ -2188,7 +2187,6 @@ function tradeCard(t){
     '<div><div class="hprice-lbl">SL</div><div class="hprice-val" style="color:#E05252AA">'+t.stop_loss+'</div></div>'+
     (t.lot_size?'<div><div class="hprice-lbl">Lots</div><div class="hprice-val">'+t.lot_size+'</div></div>':'')+
     '</div>';
-  // Meta row
   const metaRow='<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">'+
     (meta.setupId?'<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:rgba(201,168,76,.08);color:#C9A84C;border:1px solid rgba(201,168,76,.2);font-family:DM Mono,monospace">#'+meta.setupId+'</span>':'')+
     '<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:#111;color:#555;border:1px solid #1C1C1C;font-family:DM Mono,monospace">Entry '+meta.entryNum+'</span>'+
@@ -2197,26 +2195,33 @@ function tradeCard(t){
     '<span style="font-size:9px;padding:2px 8px;border-radius:3px;background:'+(meta.exec>=80?'rgba(45,184,124,.07)':meta.exec>=60?'rgba(201,168,76,.07)':'rgba(224,82,82,.07)')+';color:'+(meta.exec>=80?'#2DB87C':meta.exec>=60?'#C9A84C':'#E05252')+';border:1px solid '+(meta.exec>=80?'rgba(45,184,124,.2)':meta.exec>=60?'rgba(201,168,76,.2)':'rgba(224,82,82,.2)')+';font-family:DM Mono,monospace">⚡ '+meta.exec+'% exec</span>'+
     '</div>'+
     (meta.exec<100&&meta.unexec?'<div style="font-size:10px;color:#555;background:rgba(224,82,82,.04);border:1px solid rgba(224,82,82,.1);border-radius:5px;padding:5px 9px;margin-bottom:7px"><span style="color:#E05252;font-weight:600">Unexecuted '+(100-meta.exec)+'%:</span> '+meta.unexec+'</div>':'');
+  // Unique ID for collapsible body
+  const sid='sc'+Math.random().toString(36).slice(2,7);
   return '<div class="hcard" style="border-left:3px solid '+col+'33">'+
-    // ── TOP ROW: chips + result + pnl + actions ──
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
-      '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">'+sessChip(t.session)+dirChip(t.direction)+'<span style="font-size:9px;color:#888;font-family:DM Mono,monospace">'+t.timeframe+lot+'</span>'+durTag+'</div>'+
+    // ── HEADER ROW (always visible, tap to collapse/expand) ──
+    '<div onclick="(function(){var b=document.getElementById(\'sb-'+sid+'\');var a=document.getElementById(\'sa-'+sid+'\');var open=b.style.display===\'none\';b.style.display=open?\'block\':\'none\';a.textContent=open?\'▴\':\'▾\';})();" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;cursor:pointer">'+
+      '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">'+
+        '<span style="font-size:8px;padding:1px 6px;border-radius:3px;background:rgba(100,100,100,.06);color:#555;border:1px solid #252525;font-family:DM Mono,monospace;letter-spacing:.08em;text-transform:uppercase">Single Entry</span>'+
+        sessChip(t.session)+dirChip(t.direction)+
+        '<span style="font-size:9px;color:#888;font-family:DM Mono,monospace">'+t.timeframe+lot+'</span>'+durTag+
+      '</div>'+
       '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'+
         '<span style="font-size:13px;font-weight:700;color:'+pc(t.pnl)+';font-family:DM Mono,monospace">'+fp(t.pnl)+'</span>'+
         '<span class="badge" style="background:'+col+'22;color:'+col+';border:1px solid '+col+'44">'+t.result+'</span>'+
+        '<span id="sa-'+sid+'" style="color:#444;font-size:11px">▾</span>'+
       '</div>'+
     '</div>'+
-    // ── DATE + TIME ──
-    '<div style="font-weight:600;font-size:11px;color:#888;margin-bottom:2px">'+t.trade_date+'</div>'+
-    tim+priceGrid+metaRow+
-    (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
-    confBadges+
-    // ── CHART THUMBNAIL ──
-    (t.chart_url?'<div style="margin-top:8px"><img src="'+t.chart_url+'" onclick="var i=this;i.style.maxHeight=i.style.maxHeight==\'none\'?\'100px\':\'none\'" style="width:100%;max-height:100px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #1C1C1C" title="Tap to expand chart"></div>':'')+
-    // ── EDIT / DELETE ──
-    '<div style="display:flex;gap:6px;margin-top:8px">'+
-      '<button onclick="openEditTrade(\''+t.id+'\')" style="flex:1;font-size:10px;color:#C9A84C;background:transparent;border:1px solid rgba(201,168,76,.25);border-radius:4px;padding:5px;cursor:pointer">✏ Edit</button>'+
-      '<div id="del-'+t.id+'" style="flex:1"><button class="btn-del" style="width:100%" onclick="confirmDel(\''+t.id+'\')">Delete</button></div>'+
+    // ── COLLAPSIBLE BODY (collapsed by default) ──
+    '<div id="sb-'+sid+'" style="display:none">'+
+      '<div style="font-weight:600;font-size:11px;color:#888;margin-bottom:2px">'+t.trade_date+'</div>'+
+      tim+priceGrid+metaRow+
+      (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
+      confBadges+
+      (t.chart_url?'<div style="margin-top:8px"><img src="'+t.chart_url+'" onclick="var i=this;i.style.maxHeight=i.style.maxHeight==\'none\'?\'100px\':\'none\'" style="width:100%;max-height:100px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #1C1C1C" title="Tap to expand chart"></div>':'')+
+      '<div style="display:flex;gap:6px;margin-top:8px">'+
+        '<button onclick="openEditTrade(\''+t.id+'\')" style="flex:1;font-size:10px;color:#C9A84C;background:transparent;border:1px solid rgba(201,168,76,.25);border-radius:4px;padding:5px;cursor:pointer">✏ Edit</button>'+
+        '<div id="del-'+t.id+'" style="flex:1"><button class="btn-del" style="width:100%" onclick="confirmDel(\''+t.id+'\')">Delete</button></div>'+
+      '</div>'+
     '</div>'+
   '</div>';
 }
@@ -2278,7 +2283,7 @@ function renderHist(){
     list.innerHTML=sorted.map(k=>{
       const{year,week,trades:wt}=wg[k];
       const byDate=groupByDate(wt);
-      const inner=Object.keys(byDate).sort((a,b)=>b.localeCompare(a)).map(date=>{
+      const inner=Object.keys(byDate).filter(isWeekday).sort((a,b)=>b.localeCompare(a)).map(date=>{
         const dt=byDate[date];
         const d=new Date(date+'T12:00:00');
         const label=d.toLocaleDateString('en',{weekday:'short',month:'short',day:'numeric'});
@@ -2298,7 +2303,7 @@ function renderHist(){
       const inner=Object.keys(wg).sort((a,b)=>b.localeCompare(a)).map(wk=>{
         const{week,trades:wt}=wg[wk];
         const byDate=groupByDate(wt);
-        const dInner=Object.keys(byDate).sort((a,b)=>b.localeCompare(a)).map(date=>{
+        const dInner=Object.keys(byDate).filter(isWeekday).sort((a,b)=>b.localeCompare(a)).map(date=>{
           const dt=byDate[date];
           const d=new Date(date+'T12:00:00');
           return accBlock('md-'+date,d.toLocaleDateString('en',{weekday:'short',month:'short',day:'numeric'}),'',dt);
@@ -2322,7 +2327,7 @@ function renderHist(){
       const wInner=Object.keys(wg).sort((a,b)=>b.localeCompare(a)).map(wk=>{
         const{week,trades:wt}=wg[wk];
         const byDate=groupByDate(wt);
-        const dInner=Object.keys(byDate).sort((a,b)=>b.localeCompare(a)).map(date=>{
+        const dInner=Object.keys(byDate).filter(isWeekday).sort((a,b)=>b.localeCompare(a)).map(date=>{
           const dt=byDate[date];
           const d=new Date(date+'T12:00:00');
           return accBlock('at-d-'+date,d.toLocaleDateString('en',{weekday:'short',month:'short',day:'numeric'}),'',dt);
