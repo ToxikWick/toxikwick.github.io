@@ -1853,16 +1853,19 @@ function calcS(arr){
   // Closed trades = wins + losses only. BE is excluded from win rate calculation.
   const cl = w.length + l.length;
 
-  // Total P&L: sum across ALL trades including BE
-  const tp = arr.reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0);
+  // Helper: round to cents — prevents floating point accumulation across many trades
+  const r2 = n => Math.round(n * 100) / 100;
+
+  // Total P&L: sum across ALL trades including BE, rounded to cents
+  const tp = r2(arr.reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0));
 
   // Gross profit: only count positive P&L from winning trades.
   // Math.max guards against a Win trade that somehow has a negative pnl (data inconsistency).
-  const gp = w.reduce((sum, t) => sum + Math.max(parseFloat(t.pnl) || 0, 0), 0);
+  const gp = r2(w.reduce((sum, t) => sum + Math.max(parseFloat(t.pnl) || 0, 0), 0));
 
   // Gross loss: only count negative P&L from losing trades (stored as a negative number).
   // Math.min guards against a Loss trade that somehow has a positive pnl (data inconsistency).
-  const gl = l.reduce((sum, t) => sum + Math.min(parseFloat(t.pnl) || 0, 0), 0);
+  const gl = r2(l.reduce((sum, t) => sum + Math.min(parseFloat(t.pnl) || 0, 0), 0));
 
   // Win rate: wins / (wins + losses) * 100. BE trades are NOT counted.
   // Returns 0 if no closed trades yet.
@@ -1874,7 +1877,7 @@ function calcS(arr){
   // If no profit at all → 0.
   let pf;
   if (gl < 0) {
-    pf = gp / Math.abs(gl);
+    pf = r2(gp / Math.abs(gl));
   } else if (gp > 0) {
     pf = Infinity; // Perfect: profit with zero losses
   } else {
@@ -1888,15 +1891,15 @@ function calcS(arr){
     be: b.length,        // break-even trades
     closed: cl,          // wins + losses (BE excluded) — primary name per spec
     cl,                  // alias of closed — kept so existing callers don't break
-    tp,                  // total P&L (all trades, including BE)
-    gp,                  // gross profit (wins only, always >= 0)
-    gl,                  // gross loss  (losses only, always <= 0)
+    tp,                  // total P&L (all trades, including BE) — rounded to cents
+    gp,                  // gross profit (wins only, always >= 0) — rounded to cents
+    gl,                  // gross loss  (losses only, always <= 0) — rounded to cents
     wr,                  // win rate % = wins / (wins + losses) * 100
     pf,                  // profit factor: gp / |gl|, Infinity if no losses, 0 if no profit
     wp: wr               // alias of wr — kept so existing callers don't break
   };
 }
-function fp(v){const n=parseFloat(v)||0;return(n>=0?'+':'-')+'$'+Math.abs(n).toFixed(2)}
+function fp(v){const n=Math.round((parseFloat(v)||0)*100)/100;return(n>=0?'+':'-')+'$'+Math.abs(n).toFixed(2)}
 function pc(v){return parseFloat(v)>=0?'#2DB87C':'#E05252'}
 function wc(wr){return wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252'}
 function gc(r){return r==='Win'?'#2DB87C':r==='Loss'?'#E05252':'#C9A84C'}
@@ -1920,7 +1923,7 @@ function renderDash(){
   const all=calcS(activeTrades);
   const sBal=parseFloat(CP?.starting_balance)||1000;
   // Balance = Starting Balance + total P&L of all non-archived trades
-  const bal=sBal+all.tp;
+  const bal=Math.round((sBal+all.tp)*100)/100;
   setEl('h-bal','$'+bal.toFixed(2),bal>=sBal?'#E8C97A':'#E05252');
   setEl('h-pnl',fp(all.tp),pc(all.tp));
   setEl('h-gp','+$'+all.gp.toFixed(2));
@@ -2229,7 +2232,7 @@ function tradeCard(t){
 function accBlock(id,label,sub,tradeArr,innerHtml){
   const s=calcS(tradeArr);
   const pnlCol=s.tp>=0?'#2DB87C':'#E05252';
-  const wr=s.cl>0?s.wr.toFixed(0)+'%':'-%';
+  const wr=s.cl>0?s.wr.toFixed(1)+'%':'-%';
   const body=innerHtml!==undefined?innerHtml:(tradeArr.length?groupTradesForDisplay(tradeArr).map(item=>item.type==='group'?multiTradeCard(item):tradeCard(item.trade)).join(''):'<div style="text-align:center;padding:14px;color:#333;font-size:12px">No trades logged</div>');
   return '<div style="margin-bottom:7px">'+
     '<div class="acc-hdr" data-id="'+id+'" onclick="toggleAcc(this)">'+
@@ -2470,14 +2473,20 @@ function renderStats(){
   const wins=f.filter(t=>t.result==='Win');
   const losses=f.filter(t=>t.result==='Loss');
   const s=calcS(f);
+  const r2=n=>Math.round(n*100)/100;
+  // Best/Worst: across ALL trades (wins, losses, even BE) — pure P&L ranking.
+  // Color is driven by the actual value so a "best" loss still shows red.
   const pnls=f.map(t=>parseFloat(t.pnl)||0);
-  setEl('a-best',fp(Math.max(...pnls)));
-  setEl('a-worst',fp(Math.min(...pnls)));
-  const avgW=wins.length?wins.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0)/wins.length:0;
-  const avgL=losses.length?Math.abs(losses.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0)/losses.length):0;
+  const bestVal=r2(Math.max(...pnls));
+  const worstVal=r2(Math.min(...pnls));
+  setEl('a-best',fp(bestVal), bestVal>0?'#2DB87C':bestVal<0?'#E05252':'#C9A84C');
+  setEl('a-worst',fp(worstVal), worstVal<0?'#E05252':worstVal>0?'#2DB87C':'#C9A84C');
+  // Avg Win / Avg Loss — rounded to cents
+  const avgW=wins.length?r2(wins.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0)/wins.length):0;
+  const avgL=losses.length?r2(Math.abs(losses.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0)/losses.length)):0;
   setEl('a-avgw',wins.length?'+$'+avgW.toFixed(2):'N/A');
   setEl('a-avgl',losses.length?'-$'+avgL.toFixed(2):'N/A — no losses',losses.length?'#E05252':'#2DB87C');
-  const rrRatio=avgL>0?avgW/avgL:null;
+  const rrRatio=(avgL>0&&avgW>0)?Math.round((avgW/avgL)*100)/100:null;
   setEl('a-rrr',rrRatio!==null?rrRatio.toFixed(2)+'R':'N/A — no losses',rrRatio!==null?(rrRatio>=1?'#2DB87C':rrRatio>=0.7?'#C9A84C':'#E05252'):'#2DB87C');
   // Max drawdown — sort chronologically with tiebreaker for accuracy
   const ddSorted=[...f].sort((a,b)=>{
@@ -2486,12 +2495,15 @@ function renderStats(){
     if(da!==db)return da.localeCompare(db);
     return (a.created_at||'').localeCompare(b.created_at||''); // tiebreaker
   });
-  let run=0,peak=0,maxDD=0;
+  // peak=0: the period starts from a running P&L of $0 (relative to period start).
+  // run tracks the cumulative P&L. Each step is rounded to cents to prevent
+  // floating point drift from accumulating across many trades.
+  let ddRun=0,ddPeak=0,maxDD=0;
   ddSorted.forEach(t=>{
-    run+=parseFloat(t.pnl)||0;
-    if(run>peak)peak=run;
-    const dd=peak-run;
-    if(dd>maxDD)maxDD=dd;
+    ddRun = Math.round((ddRun + (parseFloat(t.pnl)||0)) * 100) / 100;
+    if(ddRun > ddPeak) ddPeak = ddRun;
+    const dd = Math.round((ddPeak - ddRun) * 100) / 100;
+    if(dd > maxDD) maxDD = dd;
   });
   setEl('a-dd',maxDD>0?'-$'+maxDD.toFixed(2):'$0.00');
   // Profit Factor: ∞ (no losses + profit), green when >= 1, red when < 1
@@ -2500,19 +2512,19 @@ function renderStats(){
   setEl('a-pf',pfDisp,pfCol);
 
   // Sessions
-  const sess={};f.forEach(t=>{if(!sess[t.session])sess[t.session]={tot:0,w:0,l:0,pnl:0,durs:[]};sess[t.session].tot++;if(t.result==='Win')sess[t.session].w++;if(t.result==='Loss')sess[t.session].l++;sess[t.session].pnl+=parseFloat(t.pnl)||0;if(t.trade_duration)sess[t.session].durs.push(t.trade_duration)});
+  const sess={};f.forEach(t=>{if(!sess[t.session])sess[t.session]={tot:0,w:0,l:0,pnl:0,durs:[]};sess[t.session].tot++;if(t.result==='Win')sess[t.session].w++;if(t.result==='Loss')sess[t.session].l++;sess[t.session].pnl=Math.round((sess[t.session].pnl+(parseFloat(t.pnl)||0))*100)/100;if(t.trade_duration)sess[t.session].durs.push(t.trade_duration)});
   document.getElementById('a-sess').innerHTML=Object.entries(sess).map(([n,d])=>{
-    const cl=d.w+d.l;const wr=cl>0?(d.w/cl*100).toFixed(0):'-';
+    const cl=d.w+d.l;const wr=cl>0?(d.w/cl*100).toFixed(1):'-';
     return'<div style="margin-bottom:6px"><div style="font-size:11px;font-weight:600;margin-bottom:1px">'+n+'</div><div style="font-size:10px;color:#444;font-family:DM Mono,monospace">'+d.tot+'T &middot; '+wr+'% WR &middot; <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div></div>';
   }).join('')||'<span class="muted" style="font-size:12px">-</span>';
   // TF
-  const tfs={};f.forEach(t=>{if(!tfs[t.timeframe])tfs[t.timeframe]={tot:0,w:0,l:0,pnl:0};tfs[t.timeframe].tot++;if(t.result==='Win')tfs[t.timeframe].w++;if(t.result==='Loss')tfs[t.timeframe].l++;tfs[t.timeframe].pnl+=parseFloat(t.pnl)||0});
+  const tfs={};f.forEach(t=>{if(!tfs[t.timeframe])tfs[t.timeframe]={tot:0,w:0,l:0,pnl:0};tfs[t.timeframe].tot++;if(t.result==='Win')tfs[t.timeframe].w++;if(t.result==='Loss')tfs[t.timeframe].l++;tfs[t.timeframe].pnl=Math.round((tfs[t.timeframe].pnl+(parseFloat(t.pnl)||0))*100)/100});
   document.getElementById('a-tfs').innerHTML=Object.entries(tfs).map(([n,d])=>{
-    const cl=d.w+d.l;const wr=cl>0?(d.w/cl*100).toFixed(0):'-';
+    const cl=d.w+d.l;const wr=cl>0?(d.w/cl*100).toFixed(1):'-';
     return'<div style="margin-bottom:6px"><div style="font-size:11px;font-weight:600;margin-bottom:1px">'+n+'</div><div style="font-size:10px;color:#444;font-family:DM Mono,monospace">'+d.tot+'T &middot; '+wr+'% WR &middot; <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div></div>';
   }).join('')||'<span class="muted" style="font-size:12px">-</span>';
   // Confluence impact
-  const cg={};f.forEach(t=>{const sc=t.confluence_score||0;if(!cg[sc])cg[sc]={tot:0,w:0,l:0,pnl:0};cg[sc].tot++;if(t.result==='Win')cg[sc].w++;if(t.result==='Loss')cg[sc].l++;cg[sc].pnl+=parseFloat(t.pnl)||0});
+  const cg={};f.forEach(t=>{const sc=t.confluence_score||0;if(!cg[sc])cg[sc]={tot:0,w:0,l:0,pnl:0};cg[sc].tot++;if(t.result==='Win')cg[sc].w++;if(t.result==='Loss')cg[sc].l++;cg[sc].pnl=Math.round((cg[sc].pnl+(parseFloat(t.pnl)||0))*100)/100});
   document.getElementById('a-conf').innerHTML=Object.entries(cg).sort((a,b)=>Number(b[0])-Number(a[0])).map(([sc,d])=>{
     const cl=d.w+d.l;const wr=cl>0?(d.w/cl*100).toFixed(0):'-';
     return'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #181818">'+dots(Number(sc),7)+'<div style="font-size:10px;font-family:DM Mono,monospace;color:#555">'+d.tot+'T &middot; '+wr+'% &middot; <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div></div>';
@@ -2559,7 +2571,7 @@ function renderStats(){
       discEl.innerHTML=Object.entries(byScore).reverse().filter(([_,arr])=>arr.length).map(([sc,arr])=>{
         const cl=arr.filter(t=>t.result==='Win'||t.result==='Loss').length;
         const wr=cl>0?(arr.filter(t=>t.result==='Win').length/cl*100):0;
-        const pnl=arr.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0);
+        const pnl=Math.round(arr.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0)*100)/100;
         const col=cl>0?(wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252'):'#444';
         return'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #181818">'+
           '<div><div style="font-size:11px;color:#E2DDD6;font-weight:600">'+discStars(parseInt(sc))+' <span style="color:#555;font-weight:400;font-size:10px">'+lbls[sc]+'</span></div>'+
@@ -2581,7 +2593,8 @@ function renderStats(){
       let e=parseMetaTag(t.notes).emotion;
       if(emotionRemap[e])e=emotionRemap[e]; // remap old → new
       if(!eMap[e])eMap[e]={tot:0,w:0,l:0,pnl:0};
-      eMap[e].tot++;if(t.result==='Win')eMap[e].w++;if(t.result==='Loss')eMap[e].l++;eMap[e].pnl+=parseFloat(t.pnl)||0;
+      eMap[e].tot++;if(t.result==='Win')eMap[e].w++;if(t.result==='Loss')eMap[e].l++;
+      eMap[e].pnl=Math.round((eMap[e].pnl+(parseFloat(t.pnl)||0))*100)/100;
     });
     const order=['Locked In','Confident','Neutral','On Edge','Distracted','Chasing'];
     const sorted=order.filter(k=>eMap[k]); // only show current emotions, no legacy ones
@@ -2599,14 +2612,14 @@ function renderStats(){
   const dirEl=document.getElementById('a-dir');
   if(dirEl){
     const dirMap={Long:{tot:0,w:0,l:0,pnl:0},Short:{tot:0,w:0,l:0,pnl:0}};
-    f.forEach(t=>{const d=t.direction;if(dirMap[d]){dirMap[d].tot++;if(t.result==='Win')dirMap[d].w++;if(t.result==='Loss')dirMap[d].l++;dirMap[d].pnl+=parseFloat(t.pnl)||0;}});
+    f.forEach(t=>{const d=t.direction;if(dirMap[d]){dirMap[d].tot++;if(t.result==='Win')dirMap[d].w++;if(t.result==='Loss')dirMap[d].l++;dirMap[d].pnl=Math.round((dirMap[d].pnl+(parseFloat(t.pnl)||0))*100)/100;}});
     dirEl.innerHTML=Object.entries(dirMap).filter(([_,d])=>d.tot>0).map(([dir,d])=>{
       const cl=d.w+d.l;const wr=cl>0?(d.w/cl*100):0;const wrCol=cl>0?(wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252'):'#444';
       const dirCol=dir==='Long'?'#2DB87C':'#E05252';
       return '<div style="margin-bottom:8px">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'+
           '<span style="font-size:12px;font-weight:700;color:'+dirCol+'">'+dir+'</span>'+
-          '<span style="font-size:11px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+(cl>0?wr.toFixed(0)+'% WR':'-')+'</span>'+
+          '<span style="font-size:11px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+(cl>0?wr.toFixed(1)+'% WR':'-')+'</span>'+
         '</div>'+
         '<div style="font-size:10px;color:#444;font-family:DM Mono,monospace;margin-bottom:4px">'+d.tot+'T · <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div>'+
         '<div style="background:#131313;border-radius:99px;height:5px;overflow:hidden">'+
@@ -2624,14 +2637,15 @@ function renderStats(){
       const dow=new Date(t.trade_date+'T12:00:00').getDay();
       const k=days[dow];
       if(!dowMap[k])dowMap[k]={tot:0,w:0,l:0,pnl:0,ord:dow};
-      dowMap[k].tot++;if(t.result==='Win')dowMap[k].w++;if(t.result==='Loss')dowMap[k].l++;dowMap[k].pnl+=parseFloat(t.pnl)||0;
+      dowMap[k].tot++;if(t.result==='Win')dowMap[k].w++;if(t.result==='Loss')dowMap[k].l++;
+      dowMap[k].pnl=Math.round((dowMap[k].pnl+(parseFloat(t.pnl)||0))*100)/100;
     });
     dowEl.innerHTML=Object.entries(dowMap).sort((a,b)=>a[1].ord-b[1].ord).map(([day,d])=>{
       const cl=d.w+d.l;const wr=cl>0?(d.w/cl*100):0;const wrCol=cl>0?(wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252'):'#444';
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #181818">'+
         '<span style="font-size:11px;font-weight:600;color:#E2DDD6">'+day+'</span>'+
         '<div style="text-align:right">'+
-          '<div style="font-size:11px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+(cl>0?wr.toFixed(0)+'% WR':'-')+'</div>'+
+          '<div style="font-size:11px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+(cl>0?wr.toFixed(1)+'% WR':'-')+'</div>'+
           '<div style="font-size:9px;color:#444;font-family:DM Mono,monospace">'+d.tot+'T · <span style="color:'+pc(d.pnl)+'">'+fp(d.pnl)+'</span></div>'+
         '</div></div>';
     }).join('')||'<span class="muted" style="font-size:12px">No data</span>';
