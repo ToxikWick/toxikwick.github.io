@@ -2543,6 +2543,8 @@ function renderEquityChart(){
   const yS=v=>H-PAD.b-((v-minV)/range)*cH;
   const zeroY=yS(0);
   const showZero=minV<0&&maxV>0;
+  // fmtShort — defined here so it's available to both grid labels and bottom labels
+  const fmtShort=v=>{const a=Math.abs(v);const s=v>=0?'+':'-';if(a>=1000000)return s+'$'+(a/1000000).toFixed(1)+'M';if(a>=1000)return s+'$'+(a/1000).toFixed(1)+'K';return(v>=0?'+$':'−$')+a.toFixed(0);};
   // Grid lines + Y-axis labels
   let gridH='',yAxisH='';
   // Nice step — 4 evenly spaced levels
@@ -2591,7 +2593,6 @@ function renderEquityChart(){
   // Labels
   const endVal=pts[pts.length-1].v;
   const endCol=endVal>=0?'#2DB87C':'#E05252';
-  const fmtShort=v=>{const a=Math.abs(v);const s=v>=0?'+':'-';if(a>=1000000)return s+'$'+(a/1000000).toFixed(1)+'M';if(a>=1000)return s+'$'+(a/1000).toFixed(1)+'K';return(v>=0?'+$':'−$')+a.toFixed(0);};
   const labelsH=
     '<text x="'+(PAD.l+4)+'" y="'+(H-8)+'" font-size="8" fill="#2A2A2A" font-family="DM Mono,monospace">Start</text>'+
     '<text x="'+(W-PAD.r)+'" y="'+(H-8)+'" font-size="8" fill="'+endCol+'" font-family="DM Mono,monospace" text-anchor="end">'+fmtShort(endVal)+'</text>'+
