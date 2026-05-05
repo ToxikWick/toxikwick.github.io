@@ -710,7 +710,8 @@ select option{background:#181818;color:#E2DDD6}
         <button class="ptab" data-p="all">All Time</button>
       </div>
       <!-- Period summary bar -->
-      <div id="a-summary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:7px"></div>
+      <div id="a-summary" style="margin-bottom:7px"></div>
+      <div id="a-equity-wrap" style="display:none;margin:0 0 7px;background:#0D0D0D;border:1px solid #1C1C1C;border-radius:8px;padding:12px 14px 10px"></div>
       <div class="card" style="margin-bottom:7px" id="a-streak-card">
         <div id="a-streak-inner">—</div>
       </div>
@@ -723,6 +724,11 @@ select option{background:#181818;color:#E2DDD6}
         <div class="arow"><span class="albl">Avg Win / Avg Loss</span><span class="aval" id="a-rrr" style="color:#C9A84C">—</span></div>
         <div class="arow"><span class="albl">Max Drawdown</span><span class="aval" id="a-dd" style="color:#E05252">—</span></div>
         <div class="arow"><span class="albl">Profit Factor</span><span class="aval" id="a-pf" style="color:#C9A84C">—</span></div>
+      </div>
+      <!-- DISCIPLINE ANALYTICS — placed here, after performance metrics -->
+      <div class="card" style="margin-bottom:7px">
+        <div class="sec-title">⭐ Discipline Score vs Results</div>
+        <div id="a-disc-chart">—</div>
       </div>
       <!-- DURATION ANALYSIS -->
       <div class="card" style="margin-bottom:7px">
@@ -740,10 +746,6 @@ select option{background:#181818;color:#E2DDD6}
       <div class="card" style="margin-top:7px">
         <div class="sec-title">🔬 Checklist Heatmap · Win% per Item</div>
         <div id="a-heatmap"><span class="muted" style="font-size:12px">No data yet</span></div>
-      </div>
-      <div class="card" style="margin-top:7px">
-        <div class="sec-title">⭐ Discipline Score vs Results</div>
-        <div id="a-disc-chart">—</div>
       </div>
       <div class="card" style="margin-top:7px">
         <div class="sec-title">🧠 Mindset Impact</div>
@@ -1119,6 +1121,7 @@ const DB={
 // === APP STATE ===
 // ============================================================
 let CU=null,CP=null,trades=[],archivePeriods=[],weeklyBiasData=[],propChallenge=null;
+let _statsF=[];
 let dPer='today',hPer='daily',aPer='month';
 
 // === SMC CONFLUENCE CHECKLIST CONFIG ===
@@ -2499,26 +2502,136 @@ function renderHist(){
 // === RENDER: ANALYTICS ===
 // ============================================================
 // -- RENDER ANALYTICS --
+// ── EQUITY CURVE ──────────────────────────────────────────────────────────────
+function renderEquityChart(){
+  const wrap=document.getElementById('a-equity-wrap');
+  if(!wrap)return;
+  if(!_statsF.length){wrap.innerHTML='<div style="text-align:center;padding:16px;color:#444;font-size:11px;font-family:DM Mono,monospace">No trades in this period</div>';return;}
+  // Sort chronologically
+  const sorted=[..._statsF].sort((a,b)=>{
+    const da=(a.trade_date||'')+(a.entry_time||'00:00');
+    const db=(b.trade_date||'')+(b.entry_time||'00:00');
+    if(da!==db)return da.localeCompare(db);
+    return (a.created_at||'').localeCompare(b.created_at||'');
+  });
+  // Build cumulative P&L points — starts at 0
+  let cum=0;
+  const pts=[{i:0,v:0}];
+  sorted.forEach((t,i)=>{cum+=parseFloat(t.pnl)||0;pts.push({i:i+1,v:cum,result:t.result});});
+  const W=340,H=150;
+  const PAD={t:22,b:28,l:10,r:10};
+  const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
+  const vals=pts.map(p=>p.v);
+  let minV=Math.min(...vals),maxV=Math.max(...vals);
+  if(minV===maxV){minV-=1;maxV+=1;}
+  const range=maxV-minV;
+  const xS=i=>(i/(pts.length-1||1))*cW+PAD.l;
+  const yS=v=>H-PAD.b-((v-minV)/range)*cH;
+  const zeroY=yS(0);
+  const showZero=minV<0&&maxV>0;
+  // Grid lines — subtle horizontal
+  let gridH='';
+  const gridVals=[minV,0,maxV];
+  gridVals.forEach(gv=>{
+    if(gv<minV||gv>maxV)return;
+    const gy=yS(gv);
+    gridH+='<line x1="'+PAD.l+'" y1="'+gy.toFixed(1)+'" x2="'+(W-PAD.r)+'" y2="'+gy.toFixed(1)+'" stroke="'+(gv===0?'#2A2A2A':'#181818')+'" stroke-width="'+(gv===0?'1.2':'0.8')+'" '+(gv===0?'stroke-dasharray="4,3"':'')+'/>';
+  });
+  // Line segments coloured by sign
+  let linesH='';
+  for(let i=1;i<pts.length;i++){
+    const x1=xS(i-1).toFixed(1),y1=yS(pts[i-1].v).toFixed(1);
+    const x2=xS(i).toFixed(1),y2=yS(pts[i].v).toFixed(1);
+    const col=pts[i].v>=0?'#2DB87C':'#E05252';
+    linesH+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+col+'" stroke-width="1.8" stroke-linecap="round"/>';
+  }
+  // Dots — only first, last, and any dramatic swing (win→loss direction change)
+  let dotsH='';
+  pts.forEach((p,i)=>{
+    if(i===0||i===pts.length-1){
+      const col=i===0?'#555':(p.v>=0?'#2DB87C':'#E05252');
+      dotsH+='<circle cx="'+xS(i).toFixed(1)+'" cy="'+yS(p.v).toFixed(1)+'" r="2.5" fill="'+col+'"/>';
+    }
+  });
+  // Fill area under/over zero line
+  let fillH='';
+  if(pts.length>1){
+    const topY=PAD.t,botY=H-PAD.b;
+    const clipAbove=pts.map((p,i)=>(i===0?'M':'L')+xS(i).toFixed(1)+','+Math.min(yS(p.v),zeroY).toFixed(1)).join(' ')+' L'+(W-PAD.r).toFixed(1)+','+zeroY.toFixed(1)+' L'+PAD.l+','+zeroY.toFixed(1)+' Z';
+    const clipBelow=pts.map((p,i)=>(i===0?'M':'L')+xS(i).toFixed(1)+','+Math.max(yS(p.v),zeroY).toFixed(1)).join(' ')+' L'+(W-PAD.r).toFixed(1)+','+zeroY.toFixed(1)+' L'+PAD.l+','+zeroY.toFixed(1)+' Z';
+    fillH='<path d="'+clipAbove+'" fill="rgba(45,184,124,.07)"/><path d="'+clipBelow+'" fill="rgba(224,82,82,.07)"/>';
+  }
+  // Labels
+  const endVal=pts[pts.length-1].v;
+  const endCol=endVal>=0?'#2DB87C':'#E05252';
+  const fmtShort=v=>{const a=Math.abs(v);const s=v>=0?'+':'-';if(a>=1000000)return s+'$'+(a/1000000).toFixed(1)+'M';if(a>=1000)return s+'$'+(a/1000).toFixed(1)+'K';return s+'$'+a.toFixed(2);};
+  const labelsH=
+    '<text x="'+PAD.l+'" y="'+(H-8)+'" font-size="8" fill="#333" font-family="DM Mono,monospace">Start</text>'+
+    '<text x="'+(W-PAD.r)+'" y="'+(H-8)+'" font-size="8" fill="'+endCol+'" font-family="DM Mono,monospace" text-anchor="end">'+fmtShort(endVal)+'</text>'+
+    '<text x="'+PAD.l+'" y="'+(PAD.t-6)+'" font-size="8" fill="#444" font-family="DM Mono,monospace">'+sorted.length+' trade'+(sorted.length!==1?'s':'')+'</text>'+
+    (showZero?'<text x="'+(W-PAD.r-1)+'" y="'+(zeroY-3).toFixed(1)+'" font-size="7.5" fill="#333" font-family="DM Mono,monospace" text-anchor="end">$0</text>':'');
+  wrap.innerHTML=
+    '<div style="font-size:8px;color:#444;letter-spacing:.12em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:8px">Equity Curve</div>'+
+    '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:'+H+'px;display:block;overflow:visible">'+
+      gridH+fillH+linesH+dotsH+labelsH+
+    '</svg>';
+}
+window.toggleEquityChart=function(){
+  const wrap=document.getElementById('a-equity-wrap');
+  const btn=document.getElementById('a-equity-btn');
+  if(!wrap)return;
+  const isOpen=wrap.style.display!=='none';
+  if(isOpen){
+    wrap.style.display='none';
+    if(btn){btn.style.color='#555';btn.style.background='rgba(255,255,255,.04)';btn.style.borderColor='#222';}
+  } else {
+    wrap.style.display='block';
+    renderEquityChart();
+    if(btn){btn.style.color='#2DB87C';btn.style.background='rgba(45,184,124,.08)';btn.style.borderColor='rgba(45,184,124,.25)';}
+  }
+};
+// ─────────────────────────────────────────────────────────────────────────────
 function renderStats(){
   const f=fPer(trades,aPer);
-  // ── Period summary bar ──
+  _statsF=f;
+  // If equity chart is already open, re-render it with updated period data
+  const _eqWrap=document.getElementById('a-equity-wrap');
+  if(_eqWrap&&_eqWrap.style.display!=='none')renderEquityChart();
+
+  // ── Period summary bar — new 2-row layout ──
   const sumEl=document.getElementById('a-summary');
   if(sumEl){
     if(!f.length){
       sumEl.innerHTML='';
+      if(_eqWrap){_eqWrap.style.display='none';_eqWrap.innerHTML='';}
     } else {
       const s=calcS(f);
       const wrCol=wc(s.wr);
-      const items=[
-        {lbl:'TRADES',val:s.total,col:'#E2DDD6'},
-        {lbl:'WIN RATE',val:(s.cl>0?s.wr.toFixed(1)+'%':'-'),col:wrCol},
-        {lbl:'P&L',val:fp(s.tp),col:pc(s.tp)},
-        {lbl:'PROFIT FACTOR',val:!isFinite(s.pf)?'∞':s.pf.toFixed(2),col:s.pf>=1?'#2DB87C':'#E05252'},
-      ];
-      sumEl.innerHTML=items.map(i=>'<div style="background:#111;border:1px solid #1C1C1C;border-radius:7px;padding:9px 8px;text-align:center">'+
-        '<div style="font-size:8px;color:#333;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">'+i.lbl+'</div>'+
-        '<div style="font-size:14px;font-weight:700;color:'+i.col+';font-family:DM Mono,monospace">'+i.val+'</div>'+
-      '</div>').join('');
+      const pnlCol=pc(s.tp);
+      const pnlVal=fp(s.tp);
+      const pLabels={today:'Today',week:'This Week',month:'This Month',year:'This Year',all:'All Time'};
+      const pLabel=pLabels[aPer]||'Period';
+      // Chart button icon — SVG line chart (no emoji)
+      const chartIco='<svg width="15" height="12" viewBox="0 0 15 12" fill="none" xmlns="http://www.w3.org/2000/svg"><polyline points="1,10 4,5.5 7,7.5 10.5,2 14,4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="1" cy="10" r="1.2" fill="currentColor"/><circle cx="4" cy="5.5" r="1.2" fill="currentColor"/><circle cx="7" cy="7.5" r="1.2" fill="currentColor"/><circle cx="10.5" cy="2" r="1.2" fill="currentColor"/><circle cx="14" cy="4.5" r="1.2" fill="currentColor"/></svg>';
+      sumEl.innerHTML=
+        // Row 1 — two small cards
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px">'+
+          '<div style="background:#111;border:1px solid #1C1C1C;border-radius:7px;padding:9px 8px;text-align:center">'+
+            '<div style="font-size:8px;color:#333;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">TRADES</div>'+
+            '<div style="font-size:14px;font-weight:700;color:#E2DDD6;font-family:DM Mono,monospace">'+s.total+'</div>'+
+          '</div>'+
+          '<div style="background:#111;border:1px solid #1C1C1C;border-radius:7px;padding:9px 8px;text-align:center">'+
+            '<div style="font-size:8px;color:#333;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">WIN RATE</div>'+
+            '<div style="font-size:14px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+(s.cl>0?s.wr.toFixed(1)+'%':'-')+'</div>'+
+          '</div>'+
+        '</div>'+
+        // Row 2 — full-width cumulative P&L card with chart toggle
+        '<div style="background:#111;border:1px solid #1C1C1C;border-radius:8px;padding:12px 14px;position:relative">'+
+          '<div style="font-size:8px;color:#333;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:5px">CUMULATIVE P&L · '+pLabel+'</div>'+
+          '<div style="font-size:26px;font-weight:800;color:'+pnlCol+';font-family:DM Mono,monospace;letter-spacing:-.5px;line-height:1">'+pnlVal+'</div>'+
+          // Chart toggle button — top right corner
+          '<button id="a-equity-btn" onclick="toggleEquityChart()" title="Toggle equity curve" style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.04);border:1px solid #222;border-radius:6px;padding:5px 7px;cursor:pointer;color:#555;display:flex;align-items:center;justify-content:center;transition:color .2s,background .2s">'+chartIco+'</button>'+
+        '</div>';
     }
   }
   // ── LIVE STREAK — Professional Day-Based System ──
@@ -2803,26 +2916,81 @@ function renderStats(){
         '<div style="width:'+pct+'%;height:100%;border-radius:99px;background:linear-gradient(90deg,'+col+'77,'+col+');transition:width .5s"></div></div></div>';
     }).join('');}
   }
-  // Discipline analytics
+  // Discipline analytics — enhanced
   const discEl=document.getElementById('a-disc-chart');
   if(discEl){
-    const discTrades=f.filter(t=>parseMetaTag(t.notes).disc!==undefined);
-    if(!discTrades.length){discEl.innerHTML='<span class="muted" style="font-size:12px">Log trades with discipline score to see data</span>';}
-    else{
+    const discTrades=f.filter(t=>{const d=parseMetaTag(t.notes);return d.disc!==undefined&&d.disc>0;});
+    if(!discTrades.length){
+      discEl.innerHTML='<span class="muted" style="font-size:12px">Log trades with discipline score to see data</span>';
+    } else {
+      // Sort chronologically for trend
+      const discSorted=[...discTrades].sort((a,b)=>{
+        const da=(a.trade_date||'')+(a.entry_time||'00:00');
+        const db=(b.trade_date||'')+(b.entry_time||'00:00');
+        if(da!==db)return da.localeCompare(db);
+        return (a.created_at||'').localeCompare(b.created_at||'');
+      });
+      // Avg discipline score
+      const avgDisc=discTrades.reduce((s,t)=>s+(parseMetaTag(t.notes).disc||5),0)/discTrades.length;
+      const avgDiscCol=avgDisc>=4?'#2DB87C':avgDisc>=3?'#C9A84C':'#E05252';
+      const avgDiscLbl=avgDisc>=4.5?'Locked In':avgDisc>=3.5?'Strong':avgDisc>=2.5?'Mostly OK':avgDisc>=1.5?'Struggling':'Breaking Rules';
+      // Trend dots — last 10 logged trades
+      const trendTrades=discSorted.slice(-10);
+      const trendHTML='<div style="margin-bottom:12px">'+
+        '<div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:6px">Recent Trend · Last '+trendTrades.length+' Trades</div>'+
+        '<div style="display:flex;gap:4px;align-items:flex-end">'+
+        trendTrades.map(t=>{
+          const d=parseMetaTag(t.notes).disc||5;
+          const col=d>=4?'#2DB87C':d>=3?'#C9A84C':'#E05252';
+          const h=Math.round(8+((d-1)/4)*18);
+          return'<div style="display:flex;flex-direction:column;align-items:center;gap:2px">'+
+            '<div style="font-size:7px;color:'+col+';font-family:DM Mono,monospace">'+d+'</div>'+
+            '<div title="'+t.trade_date+' · '+d+'★" style="width:12px;height:'+h+'px;border-radius:2px;background:'+col+'22;border:1px solid '+col+'55;transition:height .3s"></div>'+
+          '</div>';
+        }).join('')+
+        '</div>'+
+      '</div>';
+      // Breakdown by star rating
       const byScore={1:[],2:[],3:[],4:[],5:[]};
-      discTrades.forEach(t=>{const d=parseMetaTag(t.notes).disc||5;if(byScore[d])byScore[d].push(t)});
+      discTrades.forEach(t=>{const d=parseMetaTag(t.notes).disc||5;if(byScore[d])byScore[d].push(t);});
       const lbls={1:'Broke rules',2:'Struggled',3:'Mostly OK',4:'Strong',5:'Locked In'};
-      discEl.innerHTML=Object.entries(byScore).reverse().filter(([_,arr])=>arr.length).map(([sc,arr])=>{
+      const breakdownHTML=Object.entries(byScore).reverse().filter(([_,arr])=>arr.length).map(([sc,arr])=>{
         const cl=arr.filter(t=>t.result==='Win'||t.result==='Loss').length;
         const wr=cl>0?(arr.filter(t=>t.result==='Win').length/cl*100):0;
         const pnl=arr.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0);
-        const col=cl>0?(wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252'):'#444';
-        return'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #181818">'+
-          '<div><div style="font-size:11px;color:#E2DDD6;font-weight:600">'+discStars(parseInt(sc))+' <span style="color:#555;font-weight:400;font-size:10px">'+lbls[sc]+'</span></div>'+
-          '<div style="font-size:9px;color:#333;font-family:DM Mono,monospace;margin-top:1px">'+arr.length+' trade'+(arr.length!==1?'s':'')+'</div></div>'+
-          '<div style="text-align:right"><div style="font-size:12px;font-weight:700;color:'+col+';font-family:DM Mono,monospace">'+(cl>0?wr.toFixed(0)+'% WR':'-')+'</div>'+
-          '<div style="font-size:10px;color:'+pc(pnl)+';font-family:DM Mono,monospace">'+fp(pnl)+'</div></div></div>';
+        const wrCol=cl>0?(wr>=70?'#2DB87C':wr>=50?'#C9A84C':'#E05252'):'#444';
+        const barW=cl>0?Math.min(wr,100):0;
+        return'<div style="padding:8px 0;border-bottom:1px solid #181818">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
+            '<div>'+
+              '<span style="font-size:11px;color:#E2DDD6;font-weight:600">'+discStars(parseInt(sc))+'</span>'+
+              '<span style="color:#444;font-weight:400;font-size:10px;margin-left:5px">'+lbls[sc]+'</span>'+
+              '<span style="font-size:9px;color:#2A2A2A;font-family:DM Mono,monospace;margin-left:6px">'+arr.length+'T</span>'+
+            '</div>'+
+            '<div style="text-align:right">'+
+              '<span style="font-size:12px;font-weight:700;color:'+wrCol+';font-family:DM Mono,monospace">'+(cl>0?wr.toFixed(0)+'%':'-')+'</span>'+
+              '<span style="font-size:10px;color:'+pc(pnl)+';font-family:DM Mono,monospace;margin-left:8px">'+fp(pnl)+'</span>'+
+            '</div>'+
+          '</div>'+
+          '<div style="background:#131313;border-radius:99px;height:3px;overflow:hidden">'+
+            '<div style="width:'+barW+'%;height:100%;border-radius:99px;background:'+wrCol+';transition:width .5s"></div>'+
+          '</div>'+
+        '</div>';
       }).join('');
+      discEl.innerHTML=
+        // Avg score — prominent top stat
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0 12px;border-bottom:1px solid #1A1A1A;margin-bottom:12px">'+
+          '<div>'+
+            '<div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Avg Discipline Score</div>'+
+            '<div style="font-size:9px;color:'+avgDiscCol+'55;font-family:DM Mono,monospace">'+avgDiscLbl+'</div>'+
+          '</div>'+
+          '<div style="text-align:right">'+
+            '<div style="font-size:28px;font-weight:800;color:'+avgDiscCol+';font-family:DM Mono,monospace;line-height:1">'+avgDisc.toFixed(1)+'</div>'+
+            '<div style="font-size:9px;color:#333;font-family:DM Mono,monospace">out of 5</div>'+
+          '</div>'+
+        '</div>'+
+        trendHTML+
+        breakdownHTML;
     }
   }
   // Emotion / mindset analytics
