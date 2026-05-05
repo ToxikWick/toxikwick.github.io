@@ -2666,58 +2666,56 @@ function renderStats(){
       '</div>':'';
 
     strEl.innerHTML=
-      // ── TOP: Live Streak ──
-      '<div style="padding:12px 0 14px;border-bottom:1px solid #1A1A1A;margin-bottom:14px">'+
+      // ── ROW 1: Run History — Best/Worst cards with avg nested inside ──
+      (pDayResults.length?
+        '<div style="font-size:9px;color:#555;letter-spacing:.12em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:10px">Run History · '+pLabel+'</div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'+
+          // Best Win Run card — avg nested below
+          '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-left:2px solid #2DB87C66;border-radius:8px;padding:12px 10px;text-align:center">'+
+            '<div style="font-size:9px;color:#666;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:4px">Best Win Run</div>'+
+            '<div style="font-size:26px;font-weight:700;color:#2DB87C;font-family:DM Mono,monospace;line-height:1">'+bestWinP+'</div>'+
+            '<div style="font-size:9px;color:#2DB87C66;font-family:DM Mono,monospace;margin-bottom:10px">days</div>'+
+            '<div style="height:1px;background:#1C1C1C;margin:0 -4px 8px"></div>'+
+            '<div style="font-size:8px;color:#555;letter-spacing:.06em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:2px">Avg Win Run</div>'+
+            '<div style="font-size:15px;font-weight:600;color:#2DB87C99;font-family:DM Mono,monospace">'+avgWinRunP.toFixed(1)+'</div>'+
+            '<div style="font-size:8px;color:#2DB87C44;font-family:DM Mono,monospace">days avg</div>'+
+          '</div>'+
+          // Worst Loss Run card — avg nested below
+          '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-left:2px solid #E0525266;border-radius:8px;padding:12px 10px;text-align:center">'+
+            '<div style="font-size:9px;color:#666;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:4px">Worst Loss Run</div>'+
+            '<div style="font-size:26px;font-weight:700;color:#E05252;font-family:DM Mono,monospace;line-height:1">'+worstLossP+'</div>'+
+            '<div style="font-size:9px;color:#E0525266;font-family:DM Mono,monospace;margin-bottom:10px">days</div>'+
+            '<div style="height:1px;background:#1C1C1C;margin:0 -4px 8px"></div>'+
+            '<div style="font-size:8px;color:#555;letter-spacing:.06em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:2px">Avg Loss Run</div>'+
+            '<div style="font-size:15px;font-weight:600;color:#E0525299;font-family:DM Mono,monospace">'+avgLossRunP.toFixed(1)+'</div>'+
+            '<div style="font-size:8px;color:#E0525244;font-family:DM Mono,monospace">days avg</div>'+
+          '</div>'+
+        '</div>':
+        '<div style="text-align:center;padding:14px 0 10px;color:#444;font-size:11px;font-family:DM Mono,monospace">No data for '+pLabel+'</div>'
+      )+
+      // ── ROW 2: Current Day Streak — prominent card ──
+      '<div style="background:#0D0D0D;border:1px solid #1E1E1E;border-radius:9px;padding:14px 14px 12px">'+
         '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">'+
-          // Left — label + big number
+          // Left — label + number + subtext + sparkline
           '<div style="flex:1;min-width:0">'+
-            '<div style="font-size:10px;color:#555;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:6px">Current day streak</div>'+
+            '<div style="font-size:9px;color:#555;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:7px">Current day streak</div>'+
             (dayResults.length?
-              '<div style="font-size:30px;font-weight:700;color:'+curCol+';font-family:DM Mono,monospace;line-height:1;display:flex;align-items:baseline;gap:6px">'+
-                streakNum+
-                '<span style="font-size:16px;font-weight:500">'+streakUnit+'</span>'+
-                '<span style="font-size:18px">'+arrow+'</span>'+
+              '<div style="display:flex;align-items:baseline;gap:5px;line-height:1">'+
+                '<div style="font-size:32px;font-weight:700;color:'+curCol+';font-family:DM Mono,monospace">'+streakNum+'</div>'+
+                '<div style="font-size:15px;font-weight:500;color:'+curCol+'CC;font-family:DM Mono,monospace">'+streakUnit+'</div>'+
+                '<div style="font-size:20px;color:'+curCol+';margin-left:2px">'+arrow+'</div>'+
               '</div>'+
-              '<div style="font-size:9px;color:#555;margin-top:4px;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em">'+(ct==='Win'?'Win':'Loss')+' · All Time</div>'+
+              '<div style="font-size:9px;color:#555;margin-top:5px;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em">'+(ct==='Win'?'Win':'Loss')+' · All Time</div>'+
               gapHTML+
               alertHTML+
               sparkHTML:
-              '<div style="color:#666;font-size:12px;margin-top:4px">No trades yet</div>'
+              '<div style="font-size:13px;color:#555;margin-top:4px">No trades yet</div>'
             )+
           '</div>'+
-          // Right — comparison pills
+          // Right — pills: previous then current
           pillsHTML+
         '</div>'+
-      '</div>'+
-      // ── BOTTOM: Run History (period-responsive) ──
-      (pDayResults.length?
-        '<div style="font-size:9px;color:#555;letter-spacing:.12em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:10px">Run History · '+pLabel+'</div>'+
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
-          '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-left:2px solid #2DB87C55;border-radius:7px;padding:10px;text-align:center">'+
-            '<div style="font-size:9px;color:#666;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Best Win Run</div>'+
-            '<div style="font-size:22px;font-weight:700;color:#2DB87C;font-family:DM Mono,monospace">'+bestWinP+'</div>'+
-            '<div style="font-size:9px;color:#2DB87C55;font-family:DM Mono,monospace">days</div>'+
-          '</div>'+
-          '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-left:2px solid #E0525255;border-radius:7px;padding:10px;text-align:center">'+
-            '<div style="font-size:9px;color:#666;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Worst Loss Run</div>'+
-            '<div style="font-size:22px;font-weight:700;color:#E05252;font-family:DM Mono,monospace">'+worstLossP+'</div>'+
-            '<div style="font-size:9px;color:#E0525255;font-family:DM Mono,monospace">days</div>'+
-          '</div>'+
-        '</div>'+
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
-          '<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:7px;padding:8px;text-align:center">'+
-            '<div style="font-size:9px;color:#555;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:2px">Avg Win Run</div>'+
-            '<div style="font-size:17px;font-weight:700;color:#2DB87C;font-family:DM Mono,monospace">'+avgWinRunP.toFixed(1)+'</div>'+
-            '<div style="font-size:9px;color:#2DB87C44;font-family:DM Mono,monospace">days avg</div>'+
-          '</div>'+
-          '<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:7px;padding:8px;text-align:center">'+
-            '<div style="font-size:9px;color:#555;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:2px">Avg Loss Run</div>'+
-            '<div style="font-size:17px;font-weight:700;color:#E05252;font-family:DM Mono,monospace">'+avgLossRunP.toFixed(1)+'</div>'+
-            '<div style="font-size:9px;color:#E0525244;font-family:DM Mono,monospace">days avg</div>'+
-          '</div>'+
-        '</div>':
-        '<div style="text-align:center;padding:14px;color:#444;font-size:11px;font-family:DM Mono,monospace">No data for '+pLabel+'</div>'
-      );
+      '</div>';
   }
   if(!f.length){
     ['a-best','a-worst','a-avgw','a-avgl','a-rrr','a-dd','a-pf','a-streak','a-bstreak'].forEach(id=>setEl(id,'-'));
