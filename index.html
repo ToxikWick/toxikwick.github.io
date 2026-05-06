@@ -189,6 +189,8 @@ select option{background:#181818;color:#E2DDD6}
 
 /* ADMIN */
 .urow{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;background:#0C0C0C;border:1px solid #1C1C1C;border-radius:8px;margin-bottom:6px}
+.urow-confirm{background:#150808;border:1px solid rgba(224,82,82,.2);border-radius:6px;padding:9px 11px;margin-top:6px;display:none}
+.urow-confirm.show{display:block}
 
 /* MODAL */
 .moverlay{position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;z-index:300}
@@ -3823,11 +3825,73 @@ window.openAdmin=async function(){
   document.getElementById('admin-list').innerHTML=users.map(u=>{
     const col=u.role==='admin'?'#C9A84C':u.role==='approved'?'#2DB87C':'#E05252';
     const isMe=u.id===CU.id;
-    const actions=isMe?'<span style="font-size:10px;color:#333">(you)</span>':
-      u.role==='pending'?'<button class="btn-ok" onclick="changeRole(\''+u.id+'\',\'approved\',this)">Approve</button>':
-      u.role==='approved'?'<button class="btn-bad" onclick="changeRole(\''+u.id+'\',\'pending\',this)">Revoke</button>':'';
-    return'<div class="urow"><div style="flex:1;min-width:0;margin-right:10px"><div style="font-size:11px;font-weight:600;font-family:DM Mono,monospace;word-break:break-all">'+u.email+'</div><div style="font-size:10px;color:#333;margin-top:2px">'+(u.display_name||'-')+' &middot; '+u.created_at.split('T')[0]+'</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px"><span class="badge" style="background:'+col+'22;color:'+col+';border:1px solid '+col+'44">'+u.role.toUpperCase()+'</span>'+actions+'</div></div>';
+    const isAdmin=u.role==='admin';
+    const uid=u.id;
+    const safeName=(u.display_name||u.email||'this user').replace(/'/g,"\\'");
+    // Action buttons — role change
+    const roleBtn=isMe?'<span style="font-size:10px;color:#333">(you)</span>':
+      u.role==='pending'?'<button class="btn-ok" onclick="changeRole(\''+uid+'\',\'approved\',this)">Approve</button>':
+      u.role==='approved'?'<button class="btn-bad" onclick="changeRole(\''+uid+'\',\'pending\',this)">Revoke</button>':'';
+    // Delete button — only for non-admin, non-self users
+    const deleteBtn=(!isMe&&!isAdmin)
+      ?'<button class="btn-del" style="margin-top:4px;color:#E05252;border-color:rgba(224,82,82,.2);font-size:10px" onclick="showDeleteConfirm(\''+uid+'\')">🗑 Delete</button>'
+      :'';
+    // Inline confirmation panel
+    const confirmPanel=(!isMe&&!isAdmin)?
+      '<div class="urow-confirm" id="del-confirm-'+uid+'">'+
+        '<div style="font-size:10px;color:#E05252;font-family:DM Mono,monospace;margin-bottom:7px;line-height:1.5">'+
+          '⚠ Delete <strong>'+safeName+'</strong>?<br>'+
+          '<span style="color:#555">All their trades will be permanently removed. This cannot be undone.</span>'+
+        '</div>'+
+        '<div style="display:flex;gap:6px">'+
+          '<button class="btn-cf" onclick="deleteUser(\''+uid+'\',this)">Confirm Delete</button>'+
+          '<button class="btn-cx" onclick="hideDeleteConfirm(\''+uid+'\')">Cancel</button>'+
+        '</div>'+
+      '</div>':'';
+    return'<div id="urow-'+uid+'"><div class="urow">'+
+      '<div style="flex:1;min-width:0;margin-right:10px">'+
+        '<div style="font-size:11px;font-weight:600;font-family:DM Mono,monospace;word-break:break-all">'+u.email+'</div>'+
+        '<div style="font-size:10px;color:#333;margin-top:2px">'+(u.display_name||'-')+' &middot; '+u.created_at.split('T')[0]+'</div>'+
+      '</div>'+
+      '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">'+
+        '<span class="badge" style="background:'+col+'22;color:'+col+';border:1px solid '+col+'44">'+u.role.toUpperCase()+'</span>'+
+        roleBtn+
+        deleteBtn+
+      '</div>'+
+    '</div>'+confirmPanel+'</div>';
   }).join('')+'<div style="font-size:10px;color:#1E1E1E;text-align:center;margin-top:10px;font-family:DM Mono,monospace">'+users.length+' total</div>';
+};
+
+window.showDeleteConfirm=function(uid){
+  const el=document.getElementById('del-confirm-'+uid);
+  if(el)el.classList.add('show');
+};
+
+window.hideDeleteConfirm=function(uid){
+  const el=document.getElementById('del-confirm-'+uid);
+  if(el)el.classList.remove('show');
+};
+
+window.deleteUser=async function(uid,btn){
+  btn.disabled=true;btn.textContent='Deleting...';
+  // Step 1 — delete all their trades
+  const{error:te}=await DB.from('trades').delete('user_id=eq.'+uid);
+  if(te){
+    flash('err','Failed to delete trades: '+te.message);
+    btn.disabled=false;btn.textContent='Confirm Delete';
+    return;
+  }
+  // Step 2 — delete their profile (removes access completely)
+  const{error:pe}=await DB.from('profiles').delete('id=eq.'+uid);
+  if(pe){
+    flash('err','Trades deleted but profile removal failed: '+pe.message);
+    btn.disabled=false;btn.textContent='Confirm Delete';
+    return;
+  }
+  // Step 3 — remove the row from the UI cleanly
+  const row=document.getElementById('urow-'+uid);
+  if(row)row.remove();
+  flash('ok','User and all their data deleted.');
 };
 // ============================================================
 // === RENDER: ARCHIVE ===
