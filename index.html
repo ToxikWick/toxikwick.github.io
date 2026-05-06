@@ -40,6 +40,18 @@ select option{background:#181818;color:#E2DDD6}
 .aalert{border-radius:7px;padding:9px 12px;margin-bottom:12px;font-size:11px;font-family:'DM Mono',monospace;display:none;line-height:1.5}
 .aalert.err{background:#1C0A0A;border:1px solid #5C1A1A;color:#F87171}
 .aalert.ok{background:#0A1C0F;border:1px solid #1A5C2A;color:#6EE7A0}
+/* Auth shake animation */
+@keyframes authShake{0%,100%{transform:translateX(0)}15%{transform:translateX(-6px)}30%{transform:translateX(6px)}45%{transform:translateX(-4px)}60%{transform:translateX(4px)}75%{transform:translateX(-2px)}90%{transform:translateX(2px)}}
+.auth-card.shake{animation:authShake .45s ease}
+/* Password field wrapper */
+.pw-wrap{position:relative}
+.pw-wrap input{padding-right:42px}
+.pw-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#333;padding:4px;display:flex;align-items:center;justify-content:center;transition:color .2s}
+.pw-toggle:hover{color:#777}
+/* Forgot password link */
+.auth-forgot{text-align:right;margin-top:-6px;margin-bottom:12px}
+.auth-forgot button{background:none;border:none;color:#444;font-size:10px;font-family:'DM Mono',monospace;cursor:pointer;padding:0;text-decoration:underline;text-decoration-color:#2A2A2A}
+.auth-forgot button:hover{color:#777}
 
 /* PENDING */
 #s-pending{align-items:center;justify-content:center;padding:20px;text-align:center}
@@ -306,17 +318,37 @@ select option{background:#181818;color:#E2DDD6}
       <div id="form-login">
         <div class="auth-title">Welcome back</div>
         <div class="auth-desc">Sign in to your ToxikWick journal.</div>
-        <div class="af"><label>Email</label><input type="email" id="l-email" placeholder="you@email.com" autocomplete="email"></div>
-        <div class="af"><label>Password</label><input type="password" id="l-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+        <div class="af">
+          <label>Email</label>
+          <input type="email" id="l-email" placeholder="you@email.com" autocomplete="email" oninput="authClearErr()">
+        </div>
+        <div class="af">
+          <label>Password</label>
+          <div class="pw-wrap">
+            <input type="password" id="l-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" oninput="authClearErr()">
+            <button class="pw-toggle" type="button" onclick="togglePw('l-pass',this)" tabindex="-1" aria-label="Show password">
+              <svg id="l-eye" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="auth-forgot"><button type="button" onclick="doForgotPassword()">Forgot password?</button></div>
         <button class="auth-btn" id="login-btn" onclick="doLogin()">SIGN IN</button>
       </div>
       <!-- Register -->
       <div id="form-reg" style="display:none">
         <div class="auth-title">Request Access</div>
         <div class="auth-desc">Create your account. The admin must approve before you can access the journal.</div>
-        <div class="af"><label>Display Name</label><input type="text" id="r-name" placeholder="e.g. Trader Mike"></div>
-        <div class="af"><label>Email</label><input type="email" id="r-email" placeholder="you@email.com"></div>
-        <div class="af"><label>Password (min 6 chars)</label><input type="password" id="r-pass" placeholder="••••••••"></div>
+        <div class="af"><label>Display Name</label><input type="text" id="r-name" placeholder="e.g. Trader Mike" oninput="authClearErr()"></div>
+        <div class="af"><label>Email</label><input type="email" id="r-email" placeholder="you@email.com" oninput="authClearErr()"></div>
+        <div class="af">
+          <label>Password (min 6 chars)</label>
+          <div class="pw-wrap">
+            <input type="password" id="r-pass" placeholder="••••••••" oninput="authClearErr()">
+            <button class="pw-toggle" type="button" onclick="togglePw('r-pass',this)" tabindex="-1" aria-label="Show password">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
         <button class="auth-btn" id="reg-btn" onclick="doRegister()">CREATE ACCOUNT</button>
       </div>
     </div>
@@ -987,8 +1019,55 @@ async function authRequest(path,body){
     headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
     body:JSON.stringify(body)
   });
-  return r.json();
+  // Always parse JSON, but surface HTTP errors clearly
+  let d;
+  try{d=await r.json();}catch(e){throw new Error('Server returned an unexpected response. Try again.');}
+  if(!r.ok&&!d.error&&!d.error_description){
+    d.error_description='Server error ('+r.status+'). Try again later.';
+  }
+  return d;
 }
+
+// Translate raw Supabase error codes into plain human messages
+function friendlyAuthErr(msg){
+  if(!msg)return'Something went wrong. Try again.';
+  const m=msg.toLowerCase();
+  if(m.includes('invalid login')||m.includes('invalid_grant')||m.includes('invalid credentials'))
+    return'Wrong email or password. Please try again.';
+  if(m.includes('email not confirmed'))
+    return'Email not verified. Check your inbox.';
+  if(m.includes('user not found')||m.includes('no user'))
+    return'No account found with that email.';
+  if(m.includes('email already registered')||m.includes('already registered'))
+    return'An account with that email already exists.';
+  if(m.includes('password should be')||m.includes('password must'))
+    return'Password must be at least 6 characters.';
+  if(m.includes('rate limit')||m.includes('too many'))
+    return'Too many attempts. Please wait a moment and try again.';
+  if(m.includes('network')||m.includes('fetch')||m.includes('failed to fetch'))
+    return'Network error. Check your connection and try again.';
+  return msg; // fallback: show as-is if unrecognised
+}
+
+// Show/hide password toggle
+window.togglePw=function(inputId,btn){
+  const inp=document.getElementById(inputId);
+  if(!inp)return;
+  const isHidden=inp.type==='password';
+  inp.type=isHidden?'text':'password';
+  // Swap eye icon
+  btn.innerHTML=isHidden
+    ?'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
+    :'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  btn.style.color=isHidden?'#C9A84C':'#333';
+  inp.focus();
+};
+
+// Auto-clear error when user starts typing
+window.authClearErr=function(){
+  const e=document.getElementById('a-err');
+  if(e&&e.style.display!=='none'){e.style.display='none';}
+};
 
 async function signIn(email,password){
   const d=await authRequest('/token?grant_type=password',{email,password});
@@ -1174,7 +1253,20 @@ function switchAuth(t){
   document.getElementById('a-err').style.display='none';
   document.getElementById('a-ok').style.display='none';
 }
-function authErr(m){const e=document.getElementById('a-err');e.textContent=m;e.style.display='block';document.getElementById('a-ok').style.display='none'}
+function authErr(m){
+  const e=document.getElementById('a-err');
+  e.textContent=m;
+  e.style.display='block';
+  document.getElementById('a-ok').style.display='none';
+  // Shake the card
+  const card=document.querySelector('.auth-card');
+  if(card){
+    card.classList.remove('shake');
+    void card.offsetWidth; // force reflow so animation restarts
+    card.classList.add('shake');
+    card.addEventListener('animationend',()=>card.classList.remove('shake'),{once:true});
+  }
+}
 function authOk(m){const e=document.getElementById('a-ok');e.textContent=m;e.style.display='block';document.getElementById('a-err').style.display='none'}
 
 // -- LOGIN --
@@ -1186,13 +1278,33 @@ async function doLogin(){
   btn.disabled=true;btn.textContent='Signing in...';
   try{
     const{user,error}=await signIn(email,pass);
-    if(error){authErr(error.message);btn.disabled=false;btn.textContent='SIGN IN';return;}
+    if(error){authErr(friendlyAuthErr(error.message));btn.disabled=false;btn.textContent='SIGN IN';return;}
     await initApp(user);
   }catch(e){
-    authErr('Network error. Check your connection.');
+    authErr(friendlyAuthErr(e.message||''));
     btn.disabled=false;btn.textContent='SIGN IN';
   }
 }
+
+// -- FORGOT PASSWORD --
+window.doForgotPassword=async function(){
+  const email=document.getElementById('l-email').value.trim();
+  if(!email){authErr('Enter your email above first.');return;}
+  const btn=document.getElementById('login-btn');
+  btn.disabled=true;btn.textContent='Sending...';
+  try{
+    const r=await fetch(AUTH_URL+'/recover',{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({email})
+    });
+    // Supabase returns 200 even if email not found (security by design)
+    authOk('If that email is registered, a reset link has been sent.');
+  }catch(e){
+    authErr('Network error. Check your connection and try again.');
+  }
+  btn.disabled=false;btn.textContent='SIGN IN';
+};
 
 // -- REGISTER --
 async function doRegister(){
@@ -1205,9 +1317,9 @@ async function doRegister(){
   btn.disabled=true;btn.textContent='Creating...';
   try{
     const{user,error}=await signUp(email,pass,name);
-    if(error){authErr(error.message);btn.disabled=false;btn.textContent='CREATE ACCOUNT';return;}
+    if(error){authErr(friendlyAuthErr(error.message));btn.disabled=false;btn.textContent='CREATE ACCOUNT';return;}
     authOk('Account created! Wait for admin approval then sign in.');
-  }catch(e){authErr('Network error. Check your connection.');}
+  }catch(e){authErr(friendlyAuthErr(e.message||''));}
   btn.disabled=false;btn.textContent='CREATE ACCOUNT';
 }
 
