@@ -325,7 +325,7 @@ select option{background:#181818;color:#E2DDD6}
         <div class="af">
           <label>Password</label>
           <div class="pw-wrap">
-            <input type="password" id="l-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" oninput="authClearErr()">
+            <input type="password" id="l-pass" placeholder="••••••••" autocomplete="new-password" onkeydown="if(event.key==='Enter')doLogin()" oninput="authClearErr()">
             <button class="pw-toggle" type="button" onclick="togglePw('l-pass',this)" tabindex="-1" aria-label="Show password">
               <svg id="l-eye" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
@@ -343,7 +343,7 @@ select option{background:#181818;color:#E2DDD6}
         <div class="af">
           <label>Password (min 6 chars)</label>
           <div class="pw-wrap">
-            <input type="password" id="r-pass" placeholder="••••••••" oninput="authClearErr()">
+            <input type="password" id="r-pass" placeholder="••••••••" autocomplete="new-password" oninput="authClearErr()">
             <button class="pw-toggle" type="button" onclick="togglePw('r-pass',this)" tabindex="-1" aria-label="Show password">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
@@ -1019,34 +1019,40 @@ async function authRequest(path,body){
     headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
     body:JSON.stringify(body)
   });
-  // Always parse JSON, but surface HTTP errors clearly
   let d;
   try{d=await r.json();}catch(e){throw new Error('Server returned an unexpected response. Try again.');}
-  if(!r.ok&&!d.error&&!d.error_description){
-    d.error_description='Server error ('+r.status+'). Try again later.';
+  // Normalise all Supabase error formats into d.error_description
+  // Older API: d.error + d.error_description
+  // Newer API: d.error_code + d.message + d.code (HTTP status as number)
+  if(!r.ok){
+    if(!d.error_description){
+      d.error_description=d.message||d.error_description||d.error||d.msg||('Request failed ('+r.status+')');
+    }
   }
   return d;
 }
 
-// Translate raw Supabase error codes into plain human messages
+// Translate raw Supabase error codes/messages into plain human messages
 function friendlyAuthErr(msg){
   if(!msg)return'Something went wrong. Try again.';
   const m=msg.toLowerCase();
-  if(m.includes('invalid login')||m.includes('invalid_grant')||m.includes('invalid credentials'))
+  if(m.includes('invalid login')||m.includes('invalid_grant')||m.includes('invalid credentials')||m.includes('invalid_credentials')||m.includes('email or password'))
     return'Wrong email or password. Please try again.';
-  if(m.includes('email not confirmed'))
+  if(m.includes('email not confirmed')||m.includes('email_not_confirmed'))
     return'Email not verified. Check your inbox.';
   if(m.includes('user not found')||m.includes('no user'))
     return'No account found with that email.';
-  if(m.includes('email already registered')||m.includes('already registered'))
+  if(m.includes('email already registered')||m.includes('already registered')||m.includes('user_already_exists'))
     return'An account with that email already exists.';
-  if(m.includes('password should be')||m.includes('password must'))
+  if(m.includes('password should be')||m.includes('password must')||m.includes('weak_password'))
     return'Password must be at least 6 characters.';
-  if(m.includes('rate limit')||m.includes('too many'))
+  if(m.includes('rate limit')||m.includes('too many')||m.includes('over_request_rate_limit'))
     return'Too many attempts. Please wait a moment and try again.';
   if(m.includes('network')||m.includes('fetch')||m.includes('failed to fetch'))
     return'Network error. Check your connection and try again.';
-  return msg; // fallback: show as-is if unrecognised
+  if(m.includes('request failed')||m.includes('server error')||m.includes('unexpected'))
+    return'Server issue. Check your connection and try again.';
+  return msg;
 }
 
 // Show/hide password toggle
@@ -1112,6 +1118,7 @@ async function forceSignOut(reason){
     if(el)el.style.display='none';
   });
   show('auth');
+  clearAuthFields();
   // Show the reason after a short tick so the auth screen renders first
   if(reason){
     setTimeout(()=>{
@@ -1326,6 +1333,30 @@ async function doRegister(){
 // ============================================================
 // === APP INIT & DATA LOADING ===
 // ============================================================
+// Clear login fields + reset eye icons — called on every sign-out path
+function clearAuthFields(){
+  const le=document.getElementById('l-email');
+  const lp=document.getElementById('l-pass');
+  const rn=document.getElementById('r-name');
+  const re=document.getElementById('r-email');
+  const rp=document.getElementById('r-pass');
+  if(le)le.value='';
+  if(lp){lp.value='';lp.type='password';}
+  if(rn)rn.value='';
+  if(re)re.value='';
+  if(rp){rp.value='';rp.type='password';}
+  // Reset all pw-toggle buttons back to the closed eye
+  document.querySelectorAll('.pw-toggle').forEach(btn=>{
+    btn.style.color='#333';
+    btn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  });
+  // Clear any leftover auth alerts
+  const ae=document.getElementById('a-err');
+  const ao=document.getElementById('a-ok');
+  if(ae)ae.style.display='none';
+  if(ao)ao.style.display='none';
+}
+
 // -- LOGOUT (user-initiated) --
 async function doLogout(){
   await signOut();
@@ -1334,6 +1365,7 @@ async function doLogout(){
   ['m-settings','m-admin','m-edit','m-quick','m-bias','m-prop'].forEach(id=>{
     const el=document.getElementById(id);if(el)el.style.display='none';
   });
+  clearAuthFields();
   show('auth');
 }
 
