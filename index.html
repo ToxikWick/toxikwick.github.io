@@ -164,7 +164,20 @@ select option{background:#181818;color:#E2DDD6}
 .flash.show{display:flex}
 .flash button{background:none;border:none;color:inherit;cursor:pointer;font-size:17px}
 
-/* HISTORY CARD */
+/* HISTORY FILTER BAR */
+.hf-bar{background:#0D0D0D;border:1px solid #1C1C1C;border-radius:8px;padding:9px 10px;margin-bottom:8px}
+.hf-search{width:100%;background:#111;border:1px solid #1C1C1C;border-radius:6px;padding:7px 10px;color:#E2DDD6;font-size:12px;outline:none;font-family:'DM Mono',monospace;box-sizing:border-box;margin-bottom:7px}
+.hf-search:focus{border-color:rgba(201,168,76,.3)}
+.hf-search::placeholder{color:#2A2A2A}
+.hf-selects{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.hf-sel{background:#111;border:1px solid #1C1C1C;border-radius:5px;padding:5px 6px;color:#555;font-size:10px;font-family:'DM Mono',monospace;outline:none;cursor:pointer;width:100%}
+.hf-sel.active{border-color:rgba(201,168,76,.35);color:#E8C97A;background:rgba(201,168,76,.06)}
+.hf-active{font-size:9px;color:#C9A84C;font-family:'DM Mono',monospace;margin-top:6px;display:none}
+.hf-active.show{display:flex;justify-content:space-between;align-items:center}
+/* Admin pending badge */
+.ubtn-wrap{position:relative;display:inline-flex}
+.pending-badge{position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:#E05252;border:1.5px solid #0C0C0C;display:none}
+.pending-badge.show{display:block}
 .hcard{background:#0E0E0E;border:1px solid #1C1C1C;border-radius:10px;padding:10px 12px;margin-bottom:6px}
 .hmeta{font-size:10px;color:#444;font-family:'DM Mono',monospace;margin-bottom:5px;line-height:1.7}
 .hnote{font-size:11px;color:#777;font-style:italic;border-left:2px solid #1C1C1C;padding-left:8px;margin-top:5px;line-height:1.6}
@@ -386,11 +399,15 @@ select option{background:#181818;color:#E2DDD6}
       <button class="nbtn" data-tab="rules">📋 Rules</button>
     </div>
     <div class="umenu">
-      <div class="ubtn" id="ubtn" onclick="toggleMenu()">—</div>
+      <div class="ubtn-wrap">
+        <div class="ubtn" id="ubtn" onclick="toggleMenu()">—</div>
+        <div class="pending-badge" id="pending-badge"></div>
+      </div>
       <div class="udrop" id="udrop">
         <div class="udrop-head"><div class="udrop-name" id="u-name">—</div><div class="udrop-role" id="u-role">—</div></div>
         <div class="uitem" onclick="openSettings()">⚙ Settings</div>
         <div class="uitem" id="admin-btn" style="display:none" onclick="openAdmin()">👥 Manage Users</div>
+        <div class="uitem" id="pending-notify" style="display:none;color:#E05252" onclick="openAdmin()">⚠ <span id="pending-count"></span> pending approval</div>
         <div class="udiv"></div>
         <div class="uitem danger" onclick="doLogout()">⎋ Sign Out</div>
       </div>
@@ -730,6 +747,32 @@ select option{background:#181818;color:#E2DDD6}
         <button class="ptab" data-p="weekly">Weekly</button>
         <button class="ptab" data-p="monthly">Monthly</button>
         <button class="ptab" data-p="alltime">All Time</button>
+      </div>
+      <!-- FILTER BAR -->
+      <div class="hf-bar">
+        <input class="hf-search" id="hf-search" type="text" placeholder="Search notes, dates..." oninput="applyHistFilter()">
+        <div class="hf-selects">
+          <select class="hf-sel" id="hf-result" onchange="applyHistFilter()">
+            <option value="all">All Results</option>
+            <option value="Win">Win</option>
+            <option value="Loss">Loss</option>
+            <option value="BE">BE</option>
+          </select>
+          <select class="hf-sel" id="hf-sess" onchange="applyHistFilter()">
+            <option value="all">All Sessions</option>
+            <option value="NY">NY</option>
+            <option value="Asia">Asia</option>
+          </select>
+          <select class="hf-sel" id="hf-dir" onchange="applyHistFilter()">
+            <option value="all">All Dirs</option>
+            <option value="Long">Long</option>
+            <option value="Short">Short</option>
+          </select>
+        </div>
+        <div class="hf-active" id="hf-active">
+          <span id="hf-active-txt"></span>
+          <button onclick="clearHistFilter()" style="background:none;border:none;color:#C9A84C;font-size:10px;font-family:DM Mono,monospace;cursor:pointer;padding:0">✕ Clear</button>
+        </div>
       </div>
       <div id="hist-list"><span class="muted">Loading...</span></div>
     </div>
@@ -1386,7 +1429,11 @@ async function initApp(user){
   document.getElementById('ubtn').textContent=init;
   document.getElementById('u-name').textContent=CP.display_name||user.email;
   document.getElementById('u-role').textContent=CP.role.toUpperCase()+' &middot; '+user.email;
-  if(CP.role==='admin')document.getElementById('admin-btn').style.display='flex';
+  if(CP.role==='admin'){
+    document.getElementById('admin-btn').style.display='flex';
+    // Background check for pending users — don't block app load
+    checkPendingUsers();
+  }
   buildConf();
   document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
   await loadTrades();await loadArchivePeriods();await loadWeeklyBias();await loadPropChallenge();
@@ -2575,11 +2622,66 @@ window.toggleAcc=function(hdr){
 };
 
 // -- RENDER HISTORY --
-function renderHist(){
+function getFilteredTrades(){
   const active=trades.filter(t=>!t.archived);
+  const q=(document.getElementById('hf-search')?.value||'').toLowerCase().trim();
+  const r=document.getElementById('hf-result')?.value||'all';
+  const s=document.getElementById('hf-sess')?.value||'all';
+  const d=document.getElementById('hf-dir')?.value||'all';
+  return active.filter(t=>{
+    if(r!=='all'&&t.result!==r)return false;
+    if(s!=='all'&&t.session!==s)return false;
+    if(d!=='all'&&t.direction!==d)return false;
+    if(q){
+      const hay=((t.notes||'')+' '+(t.trade_date||'')+' '+(t.session||'')+' '+(t.direction||'')+' '+(t.result||'')).toLowerCase();
+      if(!hay.includes(q))return false;
+    }
+    return true;
+  });
+}
+window.applyHistFilter=function(){
+  // Update select highlight
+  ['hf-result','hf-sess','hf-dir'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.classList.toggle('active',el.value!=='all');
+  });
+  // Active filter label
+  const q=(document.getElementById('hf-search')?.value||'').trim();
+  const r=document.getElementById('hf-result')?.value||'all';
+  const s=document.getElementById('hf-sess')?.value||'all';
+  const d=document.getElementById('hf-dir')?.value||'all';
+  const isFiltered=q||r!=='all'||s!=='all'||d!=='all';
+  const parts=[];
+  if(q)parts.push('"'+q+'"');
+  if(r!=='all')parts.push(r);
+  if(s!=='all')parts.push(s);
+  if(d!=='all')parts.push(d);
+  const activeEl=document.getElementById('hf-active');
+  const activeTxt=document.getElementById('hf-active-txt');
+  if(activeEl){activeEl.classList.toggle('show',!!isFiltered);}
+  if(activeTxt&&parts.length)activeTxt.textContent='Filtering: '+parts.join(' · ');
+  renderHist();
+};
+window.clearHistFilter=function(){
+  const ids=['hf-search','hf-result','hf-sess','hf-dir'];
+  ids.forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    if(el.tagName==='INPUT')el.value='';
+    else el.value='all';
+    el.classList.remove('active');
+  });
+  const activeEl=document.getElementById('hf-active');
+  if(activeEl)activeEl.classList.remove('show');
+  renderHist();
+};
+function renderHist(){
+  const active=getFilteredTrades();
+  const total=trades.filter(t=>!t.archived).length;
   const list=document.getElementById('hist-list');
   const lbl={'daily':'Daily — This Week','weekly':'Weekly','monthly':'Monthly','alltime':'All Time'};
-  setEl('hist-count',(active.length)+' Trade'+(active.length!==1?'s':'')+' · '+lbl[hPer]);
+  const isFiltered=active.length!==total;
+  setEl('hist-count',(isFiltered?active.length+' of '+total:active.length)+' Trade'+(total!==1?'s':'')+' · '+lbl[hPer]);
 
   if(hPer==='daily'){
     const weekDates=getCurrentWeekDates();
@@ -3673,7 +3775,7 @@ function renderPropChallenge(){
   if(nameEl)nameEl.textContent=propChallenge.firm_name+' · $'+propChallenge.account_size.toLocaleString();
   if(settingsStatus)settingsStatus.textContent='Active: '+propChallenge.firm_name;
   if(settingsBtn)settingsBtn.textContent='EDIT / END CHALLENGE';
-  // Calculate current stats
+  // Calculate current stats from actual trade data
   const challengeTrades=trades.filter(t=>!t.archived&&t.trade_date>=propChallenge.start_date);
   const todayStr=new Date().toISOString().split('T')[0];
   const todayTrades=challengeTrades.filter(t=>t.trade_date===todayStr);
@@ -3682,8 +3784,25 @@ function renderPropChallenge(){
   const target=propChallenge.profit_target;
   const maxdd=propChallenge.max_drawdown;
   const dailyLim=propChallenge.daily_loss_limit;
+
+  // Peak-to-trough drawdown — correct professional calculation
+  const sortedChallenge=[...challengeTrades].sort((a,b)=>(a.trade_date+'').localeCompare(b.trade_date+''));
+  let running=0,peak=0,worstDD=0;
+  sortedChallenge.forEach(t=>{
+    running+=parseFloat(t.pnl)||0;
+    if(running>peak)peak=running;
+    const dd=peak-running;
+    if(dd>worstDD)worstDD=dd;
+  });
+
+  // Win rate on challenge
+  const closedC=challengeTrades.filter(t=>t.result==='Win'||t.result==='Loss');
+  const winsC=closedC.filter(t=>t.result==='Win').length;
+  const wrC=closedC.length?Math.round(winsC/closedC.length*100):null;
+  const wrColC=wrC===null?'#444':wrC>=60?'#2DB87C':wrC>=45?'#C9A84C':'#E05252';
+
   const progPct=Math.min(Math.max(totalPnl/target*100,0),100);
-  const ddPct=Math.min(Math.max(Math.abs(Math.min(totalPnl,0))/maxdd*100,0),100);
+  const ddPct=Math.min(Math.max(worstDD/maxdd*100,0),100);
   const dailyPct=Math.min(Math.max(Math.abs(Math.min(todayPnl,0))/dailyLim*100,0),100);
   const pCol=pc(totalPnl);
   const ddCol=ddPct>=80?'#E05252':ddPct>=60?'#C9A84C':'#2DB87C';
@@ -3710,21 +3829,25 @@ function renderPropChallenge(){
       '</div>'+
       (dailyPct>=80?'<div style="font-size:9px;color:#E05252;margin-top:3px;font-family:DM Mono,monospace">⚠ Approaching daily loss limit — trade carefully</div>':'')+
     '</div>'+
-    // Max drawdown
+    // Max drawdown — peak to trough
     '<div style="margin-bottom:10px">'+
       '<div style="display:flex;justify-content:space-between;font-size:9px;color:#555;font-family:DM Mono,monospace;margin-bottom:4px">'+
-        '<span>Max Drawdown Used</span><span style="color:'+ddCol+'">'+fp(Math.min(totalPnl,0))+' / -'+fp(maxdd)+'</span>'+
+        '<span>Max Drawdown (Peak→Trough)</span><span style="color:'+ddCol+'">-'+fp(worstDD)+' / -'+fp(maxdd)+'</span>'+
       '</div>'+
       '<div style="background:#151515;border-radius:99px;height:6px;overflow:hidden">'+
         '<div style="width:'+ddPct+'%;height:100%;border-radius:99px;background:'+ddCol+';transition:width .5s"></div>'+
       '</div>'+
       (ddPct>=80?'<div style="font-size:9px;color:#E05252;margin-top:3px;font-family:DM Mono,monospace">⚠ Danger zone — drawdown limit nearly reached</div>':'')+
     '</div>'+
-    // Stats row
-    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">'+
+    // Stats row — 4 items including win rate
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">'+
       '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;padding:8px;text-align:center">'+
         '<div style="font-size:8px;color:#444;font-family:DM Mono,monospace">TRADES</div>'+
         '<div style="font-size:14px;font-weight:700;color:#E2DDD6;font-family:DM Mono,monospace">'+challengeTrades.length+'</div>'+
+      '</div>'+
+      '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;padding:8px;text-align:center">'+
+        '<div style="font-size:8px;color:#444;font-family:DM Mono,monospace">WIN RATE</div>'+
+        '<div style="font-size:14px;font-weight:700;color:'+wrColC+';font-family:DM Mono,monospace">'+(wrC!==null?wrC+'%':'—')+'</div>'+
       '</div>'+
       '<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;padding:8px;text-align:center">'+
         '<div style="font-size:8px;color:#444;font-family:DM Mono,monospace">DAYS</div>'+
@@ -3818,7 +3941,31 @@ async function saveSettings(){
 }
 
 // -- ADMIN --
+// ── ADMIN PENDING NOTIFICATION ──────────────────────────────────────────────
+async function checkPendingUsers(){
+  if(!CP||CP.role!=='admin')return;
+  const{data,error}=await DB.from('profiles').select('id','role=eq.pending');
+  if(error||!data)return;
+  const count=data.length;
+  const badge=document.getElementById('pending-badge');
+  const notify=document.getElementById('pending-notify');
+  const countEl=document.getElementById('pending-count');
+  if(count>0){
+    if(badge)badge.classList.add('show');
+    if(notify){notify.style.display='flex';}
+    if(countEl)countEl.textContent=count+' user'+(count!==1?'s':'');
+  } else {
+    if(badge)badge.classList.remove('show');
+    if(notify)notify.style.display='none';
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 window.openAdmin=async function(){
+  // Clear pending badge when admin opens the panel
+  const badge=document.getElementById('pending-badge');
+  const notify=document.getElementById('pending-notify');
+  if(badge)badge.classList.remove('show');
+  if(notify)notify.style.display='none';
   closeMenu();openModal('m-admin');
   const{data:users,error}=await DB.from('profiles').select('*','order=created_at.asc');
   if(error||!users){document.getElementById('admin-list').innerHTML='<span class="muted">Failed to load.</span>';return}
