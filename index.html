@@ -580,6 +580,47 @@ select option{background:#181818;color:#E2DDD6}
           ⏱ Trade Duration: <span id="dur-val">—</span>
         </div>
         <div class="divider"></div>
+        <!-- RISK CALCULATOR — sits right after Entry/SL/Lots -->
+        <div class="calc-hdr" id="calc-hdr" onclick="toggleCalc()">
+          <span style="font-size:10px;color:#555;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase">⚖ Lot Size Calculator</span>
+          <span id="calc-arrow" style="font-size:12px;color:#2DB87C;transition:transform .2s">+</span>
+        </div>
+        <div class="calc-body" id="calc-body">
+          <!-- Balance and Risk % side by side -->
+          <div class="fg" style="margin-bottom:8px">
+            <div class="fld">
+              <label>Account Balance ($)</label>
+              <input type="number" id="calc-bal" placeholder="e.g. 650" oninput="runCalc()" step="0.01">
+            </div>
+            <div class="fld">
+              <label>Risk %</label>
+              <input type="number" id="calc-risk" placeholder="1" value="1" min="0.1" max="10" step="0.1" oninput="runCalc()">
+            </div>
+          </div>
+          <!-- Entry and SL — read-only display, synced from form -->
+          <div style="background:#111;border:1px solid #1C1C1C;border-radius:6px;padding:8px 10px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="font-size:9px;color:#444;font-family:DM Mono,monospace;letter-spacing:.08em;text-transform:uppercase">Reading from form</span>
+              <button onclick="syncCalcFromForm()" style="background:none;border:1px solid #1C1C1C;border-radius:4px;color:#444;font-size:9px;font-family:DM Mono,monospace;cursor:pointer;padding:2px 7px">↻ Sync</button>
+            </div>
+            <div style="display:flex;gap:16px">
+              <div><span style="font-size:9px;color:#333;font-family:DM Mono,monospace">Entry: </span><span id="calc-entry-display" style="font-size:11px;color:#C9A84C;font-family:DM Mono,monospace">—</span></div>
+              <div><span style="font-size:9px;color:#333;font-family:DM Mono,monospace">SL: </span><span id="calc-sl-display" style="font-size:11px;color:#E05252;font-family:DM Mono,monospace">—</span></div>
+            </div>
+          </div>
+          <div class="calc-result" id="calc-result">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <div style="font-size:8px;color:#444;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Recommended Lot Size</div>
+                <div style="font-size:24px;font-weight:800;color:#2DB87C;font-family:'DM Mono',monospace" id="calc-lot-out">—</div>
+                <div style="font-size:9px;color:#444;font-family:'DM Mono',monospace;margin-top:2px" id="calc-risk-out"></div>
+              </div>
+              <button onclick="applyCalcLot()" style="padding:8px 14px;background:rgba(45,184,124,.1);border:1px solid rgba(45,184,124,.25);border-radius:6px;color:#2DB87C;font-size:11px;font-family:'DM Mono',monospace;cursor:pointer;font-weight:700">Apply →</button>
+            </div>
+          </div>
+          <div style="font-size:9px;color:#2A2A2A;font-family:DM Mono,monospace;margin-top:8px">Formula: Risk$ ÷ (SL distance × 100) = Lot size</div>
+        </div>
+        <div class="divider"></div>
         <div class="slabel" style="color:#C9A84C;margin-bottom:8px">Result · Auto-Calculated</div>
         <div class="fg">
           <div class="fld">
@@ -691,43 +732,6 @@ select option{background:#181818;color:#E2DDD6}
           </div>
         </div><!-- end multi-entry-section -->
 
-        <!-- RISK CALCULATOR -->
-        <div class="calc-hdr" id="calc-hdr" onclick="toggleCalc()">
-          <span style="font-size:10px;color:#555;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase">⚖ Lot Size Calculator</span>
-          <span id="calc-arrow" style="font-size:12px;color:#2DB87C;transition:transform .2s">+</span>
-        </div>
-        <div class="calc-body" id="calc-body">
-          <div class="fg" style="margin-bottom:8px">
-            <div class="fld">
-              <label>Account Balance ($)</label>
-              <input type="number" id="calc-bal" placeholder="e.g. 650" oninput="runCalc()" step="0.01">
-            </div>
-            <div class="fld">
-              <label>Risk %</label>
-              <input type="number" id="calc-risk" placeholder="e.g. 1" value="1" min="0.1" max="10" step="0.1" oninput="runCalc()">
-            </div>
-          </div>
-          <div class="fg" style="margin-bottom:4px">
-            <div class="fld">
-              <label>Entry Price</label>
-              <input type="number" id="calc-entry" placeholder="e.g. 3280.50" oninput="runCalc()" step="0.001">
-            </div>
-            <div class="fld">
-              <label>Stop Loss Price</label>
-              <input type="number" id="calc-sl" placeholder="e.g. 3275.00" oninput="runCalc()" step="0.001">
-            </div>
-          </div>
-          <div class="calc-result" id="calc-result">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <div>
-                <div style="font-size:8px;color:#444;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Recommended Lot Size</div>
-                <div style="font-size:24px;font-weight:800;color:#2DB87C;font-family:'DM Mono',monospace" id="calc-lot-out">—</div>
-                <div style="font-size:9px;color:#444;font-family:'DM Mono',monospace;margin-top:2px" id="calc-risk-out"></div>
-              </div>
-              <button onclick="applyCalcLot()" style="padding:8px 12px;background:rgba(45,184,124,.1);border:1px solid rgba(45,184,124,.25);border-radius:6px;color:#2DB87C;font-size:11px;font-family:'DM Mono',monospace;cursor:pointer;font-weight:700">Apply →</button>
-            </div>
-          </div>
-        </div>
         <div class="divider"></div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
           <span class="slabel" style="margin-bottom:0">SMC Checklist</span>
@@ -4447,23 +4451,38 @@ window.toggleCalc=function(){
   const open=body.classList.toggle('open');
   hdr.classList.toggle('open',open);
   arrow.textContent=open?'−':'+';
-  // Pre-fill balance from profile
   if(open){
+    // Pre-fill balance from profile
     const balEl=document.getElementById('calc-bal');
     if(balEl&&!balEl.value&&CP&&CP.starting_balance)balEl.value=CP.starting_balance;
-    runCalc();
+    syncCalcFromForm();
   }
+};
+window.syncCalcFromForm=function(){
+  const entry=document.getElementById('f-entry')?.value||'';
+  const sl=document.getElementById('f-sl')?.value||'';
+  const eDisp=document.getElementById('calc-entry-display');
+  const sDisp=document.getElementById('calc-sl-display');
+  if(eDisp)eDisp.textContent=entry||'—';
+  if(sDisp)sDisp.textContent=sl||'—';
+  runCalc();
 };
 window.runCalc=function(){
   const bal=parseFloat(document.getElementById('calc-bal')?.value)||0;
   const risk=parseFloat(document.getElementById('calc-risk')?.value)||1;
-  const entry=parseFloat(document.getElementById('calc-entry')?.value)||0;
-  const sl=parseFloat(document.getElementById('calc-sl')?.value)||0;
+  // Read entry/SL from the form fields directly
+  const entry=parseFloat(document.getElementById('f-entry')?.value)||0;
+  const sl=parseFloat(document.getElementById('f-sl')?.value)||0;
+  // Update display
+  const eDisp=document.getElementById('calc-entry-display');
+  const sDisp=document.getElementById('calc-sl-display');
+  if(eDisp&&entry)eDisp.textContent=entry;
+  if(sDisp&&sl)sDisp.textContent=sl;
   const res=document.getElementById('calc-result');
   if(!bal||!entry||!sl||!res){if(res)res.classList.remove('show');return;}
   const slPips=Math.abs(entry-sl);
   if(slPips<0.001){res.classList.remove('show');return;}
-  // XAUUSD: 1 lot = $100 per point (1 pip = $1 for 0.01 lot)
+  // XAUUSD: 1 lot = $100 per point
   const riskAmt=bal*(risk/100);
   const lotRaw=riskAmt/(slPips*100);
   const lot=Math.floor(lotRaw*100)/100; // floor to 2dp — never over-risk
@@ -4504,7 +4523,7 @@ window.toggleRuleCheck=function(){
 function populateRuleCheck(){
   const list=document.getElementById('rc-list');
   if(!list)return;
-  if(list.children.length)return; // already populated
+  // Always repopulate — rulesData may have loaded after first open
   if(!rulesData||!rulesData.length){
     list.innerHTML='<div style="font-size:11px;color:#444;font-family:DM Mono,monospace;padding:6px 0">No rules saved yet. Add rules in the Rules tab first.</div>';
     return;
