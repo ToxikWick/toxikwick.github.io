@@ -4509,12 +4509,32 @@ function populateRuleCheck(){
     list.innerHTML='<div style="font-size:11px;color:#444;font-family:DM Mono,monospace;padding:6px 0">No rules saved yet. Add rules in the Rules tab first.</div>';
     return;
   }
-  list.innerHTML=rulesData.map(r=>
-    '<label class="rc-item" id="rc-item-'+r.id+'">'+
-      '<input type="checkbox" value="'+r.id+'" onchange="updateRuleBadge(this)">'+
-      '<span class="rc-item-txt">'+r.rule+'</span>'+
-    '</label>'
-  ).join('');
+  // Only show Entry, SL Management, Psychology — not Session or other reference categories
+  const allowedCats=['Entry','SL Management','Psychology'];
+  const grouped={};
+  rulesData.forEach(r=>{
+    if(!allowedCats.includes(r.cat))return;
+    if(!grouped[r.cat])grouped[r.cat]=[];
+    grouped[r.cat].push(r);
+  });
+  const hasSome=Object.keys(grouped).length>0;
+  if(!hasSome){
+    list.innerHTML='<div style="font-size:11px;color:#444;font-family:DM Mono,monospace;padding:6px 0">No Entry, SL Management or Psychology rules yet.</div>';
+    return;
+  }
+  list.innerHTML=allowedCats.filter(cat=>grouped[cat]&&grouped[cat].length).map(cat=>{
+    const catColor=cat==='Entry'?'#C9A84C':cat==='SL Management'?'#E05252':'#7B8FF7';
+    return'<div style="margin-bottom:10px">'+
+      '<div style="font-size:8px;color:'+catColor+';letter-spacing:.12em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:5px;padding-bottom:4px;border-bottom:1px solid #1A1A1A">'+cat+'</div>'+
+      grouped[cat].map(r=>{
+        const short=r.rule.length>45?r.rule.substring(0,45).trimEnd()+'…':r.rule;
+        return'<label class="rc-item" id="rc-item-'+r.id+'">'+
+          '<input type="checkbox" value="'+r.id+'" onchange="updateRuleBadge(this)">'+
+          '<span class="rc-item-txt">'+short+'</span>'+
+        '</label>';
+      }).join('')+
+    '</div>';
+  }).join('');
 }
 window.updateRuleBadge=function(cb){
   // Highlight the item
