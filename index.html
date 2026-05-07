@@ -164,7 +164,23 @@ select option{background:#181818;color:#E2DDD6}
 .flash.show{display:flex}
 .flash button{background:none;border:none;color:inherit;cursor:pointer;font-size:17px}
 
-/* HISTORY FILTER BAR */
+/* RULE CHECK (log form) */
+.rc-hdr{display:flex;align-items:center;justify-content:space-between;padding:9px 11px;background:#0D0D0D;border:1px solid #1C1C1C;border-radius:7px;cursor:pointer;margin-bottom:0;transition:border-color .2s}
+.rc-hdr.open{border-radius:7px 7px 0 0;border-color:rgba(201,168,76,.2)}
+.rc-body{display:none;border:1px solid rgba(201,168,76,.12);border-top:none;border-radius:0 0 7px 7px;padding:8px 11px 4px;background:#0A0A0A;margin-bottom:10px}
+.rc-body.open{display:block}
+.rc-item{display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid #131313;cursor:pointer}
+.rc-item:last-child{border-bottom:none}
+.rc-item input[type=checkbox]{accent-color:#E05252;width:14px;height:14px;cursor:pointer;flex-shrink:0;margin-top:2px}
+.rc-item-txt{font-size:11px;color:#555;line-height:1.5}
+.rc-item.checked .rc-item-txt{color:#E05252}
+/* RISK CALCULATOR */
+.calc-hdr{display:flex;align-items:center;justify-content:space-between;padding:9px 11px;background:#0D0D0D;border:1px solid #1C1C1C;border-radius:7px;cursor:pointer;margin-bottom:8px;transition:border-color .2s}
+.calc-hdr.open{border-radius:7px 7px 0 0;border-color:rgba(45,184,124,.2);margin-bottom:0}
+.calc-body{display:none;border:1px solid rgba(45,184,124,.12);border-top:none;border-radius:0 0 7px 7px;padding:12px 11px 10px;background:#0A0A0A;margin-bottom:10px}
+.calc-body.open{display:block}
+.calc-result{background:#0D0D0D;border:1px solid rgba(45,184,124,.2);border-radius:6px;padding:10px 12px;margin-top:10px;display:none}
+.calc-result.show{display:block}
 .hf-bar{background:#0D0D0D;border:1px solid #1C1C1C;border-radius:8px;padding:9px 10px;margin-bottom:8px}
 .hf-search{width:100%;background:#111;border:1px solid #1C1C1C;border-radius:6px;padding:7px 10px;color:#E2DDD6;font-size:12px;outline:none;font-family:'DM Mono',monospace;box-sizing:border-box;margin-bottom:7px}
 .hf-search:focus{border-color:rgba(201,168,76,.3)}
@@ -675,8 +691,44 @@ select option{background:#181818;color:#E2DDD6}
           </div>
         </div><!-- end multi-entry-section -->
 
+        <!-- RISK CALCULATOR -->
+        <div class="calc-hdr" id="calc-hdr" onclick="toggleCalc()">
+          <span style="font-size:10px;color:#555;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase">⚖ Lot Size Calculator</span>
+          <span id="calc-arrow" style="font-size:12px;color:#2DB87C;transition:transform .2s">+</span>
+        </div>
+        <div class="calc-body" id="calc-body">
+          <div class="fg" style="margin-bottom:8px">
+            <div class="fld">
+              <label>Account Balance ($)</label>
+              <input type="number" id="calc-bal" placeholder="e.g. 650" oninput="runCalc()" step="0.01">
+            </div>
+            <div class="fld">
+              <label>Risk %</label>
+              <input type="number" id="calc-risk" placeholder="e.g. 1" value="1" min="0.1" max="10" step="0.1" oninput="runCalc()">
+            </div>
+          </div>
+          <div class="fg" style="margin-bottom:4px">
+            <div class="fld">
+              <label>Entry Price</label>
+              <input type="number" id="calc-entry" placeholder="e.g. 3280.50" oninput="runCalc()" step="0.001">
+            </div>
+            <div class="fld">
+              <label>Stop Loss Price</label>
+              <input type="number" id="calc-sl" placeholder="e.g. 3275.00" oninput="runCalc()" step="0.001">
+            </div>
+          </div>
+          <div class="calc-result" id="calc-result">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <div style="font-size:8px;color:#444;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Recommended Lot Size</div>
+                <div style="font-size:24px;font-weight:800;color:#2DB87C;font-family:'DM Mono',monospace" id="calc-lot-out">—</div>
+                <div style="font-size:9px;color:#444;font-family:'DM Mono',monospace;margin-top:2px" id="calc-risk-out"></div>
+              </div>
+              <button onclick="applyCalcLot()" style="padding:8px 12px;background:rgba(45,184,124,.1);border:1px solid rgba(45,184,124,.25);border-radius:6px;color:#2DB87C;font-size:11px;font-family:'DM Mono',monospace;cursor:pointer;font-weight:700">Apply →</button>
+            </div>
+          </div>
+        </div>
         <div class="divider"></div>
-        <!-- UPDATED CONFLUENCE -->
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
           <span class="slabel" style="margin-bottom:0">SMC Checklist</span>
           <span id="conf-score" style="font-size:11px;color:#C9A84C;font-family:'DM Mono',monospace;font-weight:700">0/7</span>
@@ -719,6 +771,16 @@ select option{background:#181818;color:#E2DDD6}
             <span class="dstar" data-val="5" onclick="selectDisc(this)">&#9733;</span>
           </div>
           <input type="hidden" id="f-disc" value="5">
+        </div>
+        <div class="divider"></div>
+        <!-- RULE CHECK (optional) -->
+        <div class="rc-hdr" id="rc-hdr" onclick="toggleRuleCheck()">
+          <span style="font-size:10px;color:#555;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase">📋 Rule Check <span id="rc-count-badge" style="display:none;background:rgba(224,82,82,.15);color:#E05252;border:1px solid rgba(224,82,82,.3);border-radius:3px;font-size:9px;padding:1px 6px;margin-left:6px"></span></span>
+          <span id="rc-arrow" style="font-size:12px;color:#444;transition:transform .2s">+</span>
+        </div>
+        <div class="rc-body" id="rc-body">
+          <div id="rc-list"></div>
+          <div style="font-size:9px;color:#2A2A2A;font-family:DM Mono,monospace;margin-top:6px;padding-top:6px;border-top:1px solid #131313">Optional — tick rules you broke on this trade</div>
         </div>
         <div class="divider"></div>
         <div class="fld"><label>Notes / Review</label><textarea id="f-notes" rows="3" placeholder="Execution notes, what the market did, psychology..."></textarea></div>
@@ -806,6 +868,11 @@ select option{background:#181818;color:#E2DDD6}
       <div class="card" style="margin-bottom:7px">
         <div class="sec-title">⭐ Discipline Score vs Results</div>
         <div id="a-disc-chart">—</div>
+      </div>
+      <!-- RULE VIOLATIONS ANALYTICS -->
+      <div class="card" style="margin-bottom:7px">
+        <div class="sec-title">📋 Rule Violations</div>
+        <div id="a-rule-viols">—</div>
       </div>
       <!-- DURATION ANALYSIS -->
       <div class="card" style="margin-bottom:7px">
@@ -1845,6 +1912,7 @@ window.saveMultiTrade=async function(){
   const unexec=exec<100?document.getElementById('f-unexec').value.trim():'';
   const disc=parseInt(document.getElementById('f-disc').value)||5;
   const rawNotes=document.getElementById('f-notes').value.trim();
+  const viols=Array.from(document.querySelectorAll('#rc-list input[type=checkbox]:checked')).map(cb=>cb.value);
   // Checklist
   const confScore=CKEYS.filter(k=>document.getElementById('ci-'+k)?.classList.contains('on')).length;
   const confTag=confScore>0?'\n['+CLBLS.filter((_,i)=>document.getElementById('ci-'+CKEYS[i])?.classList.contains('on')).map(l=>'OK '+l).join('|')+']':'';
@@ -1867,7 +1935,7 @@ window.saveMultiTrade=async function(){
     if(result==='Loss'&&pnl>0)pnl=-pnl;
     if(result==='Win'&&pnl<0)pnl=-pnl;
     if(result==='BE')pnl=0;
-    const metaTag=buildMetaTag(setupId,String(n),emotion,exec,unexec,disc);
+    const metaTag=buildMetaTag(setupId,String(n),emotion,exec,unexec,disc,viols);
     const notes=metaTag+(rawNotes?'\n'+rawNotes:'')+confTag;
     trades_to_save.push({
       user_id:CU.id,
@@ -1930,7 +1998,7 @@ window.updateEditExecSlider=function(){
 };
 
 // Meta tag helpers
-function buildMetaTag(setupId,entryNum,emotion,exec,unexec,disc){
+function buildMetaTag(setupId,entryNum,emotion,exec,unexec,disc,viols){
   const parts=[];
   if(setupId)parts.push('setup='+setupId);
   if(entryNum)parts.push('entry='+entryNum);
@@ -1938,20 +2006,22 @@ function buildMetaTag(setupId,entryNum,emotion,exec,unexec,disc){
   parts.push('exec='+exec+'%');
   if(exec<100&&unexec)parts.push('unexec='+unexec);
   if(disc&&disc!==5)parts.push('disc='+disc);
+  if(viols&&viols.length)parts.push('viols='+viols.join(','));
   return '{'+parts.join('|')+'}';
 }
 function parseMetaTag(notes){
   const m=(notes||'').match(/\{([^}]+)\}/);
-  if(!m)return{setupId:'',entryNum:'1',emotion:'',exec:100,unexec:''};
-  const obj={setupId:'',entryNum:'1',emotion:'',exec:100,unexec:'',disc:5};
+  if(!m)return{setupId:'',entryNum:'1',emotion:'',exec:100,unexec:'',disc:5,viols:[]};
+  const obj={setupId:'',entryNum:'1',emotion:'',exec:100,unexec:'',disc:5,viols:[]};
   m[1].split('|').forEach(p=>{
-    const[k,v]=p.split('=');
+    const[k,...rest]=p.split('=');const v=rest.join('=');
     if(k==='setup')obj.setupId=v||'';
     if(k==='entry')obj.entryNum=v||'1';
     if(k==='emotion')obj.emotion=v||'';
     if(k==='exec')obj.exec=parseInt(v)||100;
     if(k==='unexec')obj.unexec=v||'';
     if(k==='disc')obj.disc=parseInt(v)||5;
+    if(k==='viols')obj.viols=v?v.split(',').filter(Boolean):[];
   });
   return obj;
 }
@@ -1986,7 +2056,8 @@ async function saveTrade(){
   const exec=parseInt(document.getElementById('f-exec').value)||100;
   const unexec=exec<100?document.getElementById('f-unexec').value.trim():'';
   const disc=parseInt(document.getElementById('f-disc').value)||5;
-  const metaTag=buildMetaTag(setupId,entryNum,emotion,exec,unexec,disc);
+  const viols=Array.from(document.querySelectorAll('#rc-list input[type=checkbox]:checked')).map(cb=>cb.value);
+  const metaTag=buildMetaTag(setupId,entryNum,emotion,exec,unexec,disc,viols);
   const rawNotes=document.getElementById('f-notes').value.trim();
   const confNote=CKEYS.map((k,i)=>cv[k]?'OK '+CLBLS[i]:null).filter(Boolean).join(', ');
   const confTag=confNote?'\n['+confNote+']':'';
@@ -2076,6 +2147,10 @@ function resetForm(){
   document.getElementById('dur-preview').style.display='none';
   CKEYS.forEach(k=>{const cb=document.getElementById('cb-'+k);if(cb)cb.checked=false;const ci=document.getElementById('ci-'+k);if(ci)ci.classList.remove('on')});
   document.getElementById('conf-score').textContent='0/7';
+  // Reset rule check
+  document.querySelectorAll('#rc-list input[type=checkbox]').forEach(cb=>{cb.checked=false;cb.closest('.rc-item')?.classList.remove('checked');});
+  const rcBadge=document.getElementById('rc-count-badge');
+  if(rcBadge){rcBadge.style.display='none';rcBadge.textContent='';}
 }
 
 // ============================================================
@@ -2510,6 +2585,17 @@ function multiTradeCard(group){
       (groupChartUrl?'<div style="margin-top:8px"><img src="'+groupChartUrl+'" onclick="var i=this;i.style.maxHeight=i.style.maxHeight==\'none\'?\'100px\':\'none\'" style="width:100%;max-height:100px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #1C1C1C" title="Tap to expand chart"></div>':'')+
       (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
       confBadges+
+      // Violated rules
+      (meta0.viols&&meta0.viols.length?
+        '<div style="margin-top:9px">'+
+        '<div style="font-size:8px;color:#E05252AA;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:5px">Rules Broken</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:4px">'+
+        meta0.viols.map(rid=>{
+          const r=(rulesData||[]).find(x=>x.id===rid);
+          const txt=r?r.rule.substring(0,50)+(r.rule.length>50?'…':''):'Rule '+rid;
+          return'<span style="font-size:9px;padding:3px 8px;border-radius:4px;background:rgba(224,82,82,.06);color:#E05252;border:1px solid rgba(224,82,82,.2);font-family:DM Mono,monospace;line-height:1.4">✗ '+txt+'</span>';
+        }).join('')+
+        '</div></div>':'')+
     '</div>'+
   '</div>';
 }
@@ -2582,6 +2668,17 @@ function tradeCard(t){
       tim+priceGrid+metaRow+
       (formattedNotes?'<div class="hnote">'+formattedNotes+'</div>':'')+
       confBadges+
+      // Violated rules
+      (meta.viols&&meta.viols.length?
+        '<div style="margin-top:9px">'+
+        '<div style="font-size:8px;color:#E05252AA;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:5px">Rules Broken</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:4px">'+
+        meta.viols.map(rid=>{
+          const r=(rulesData||[]).find(x=>x.id===rid);
+          const txt=r?r.rule.substring(0,50)+(r.rule.length>50?'…':''):'Rule '+rid;
+          return'<span style="font-size:9px;padding:3px 8px;border-radius:4px;background:rgba(224,82,82,.06);color:#E05252;border:1px solid rgba(224,82,82,.2);font-family:DM Mono,monospace;line-height:1.4">✗ '+txt+'</span>';
+        }).join('')+
+        '</div></div>':'')+
       (t.chart_url?'<div style="margin-top:8px"><img src="'+t.chart_url+'" onclick="var i=this;i.style.maxHeight=i.style.maxHeight==\'none\'?\'100px\':\'none\'" style="width:100%;max-height:100px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #1C1C1C" title="Tap to expand chart"></div>':'')+
       '<div style="display:flex;gap:6px;margin-top:8px">'+
         '<button onclick="openEditTrade(\''+t.id+'\')" style="flex:1;font-size:10px;color:#C9A84C;background:transparent;border:1px solid rgba(201,168,76,.25);border-radius:4px;padding:5px;cursor:pointer">✏ Edit</button>'+
@@ -3108,7 +3205,7 @@ function renderStats(){
   if(!f.length){
     ['a-best','a-worst','a-avgw','a-avgl','a-rrr','a-dd','a-pf','a-streak','a-bstreak'].forEach(id=>setEl(id,'-'));
     setEl('a-streak-ico','-');
-    ['a-sess','a-tfs','a-conf','a-dur','a-emotion','a-dir','a-dow','a-rrr-detail','a-heatmap','a-disc-chart','a-bias-acc'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML='<span class="muted" style="font-size:12px">No data</span>'});
+    ['a-sess','a-tfs','a-conf','a-dur','a-emotion','a-dir','a-dow','a-rrr-detail','a-heatmap','a-disc-chart','a-bias-acc','a-rule-viols'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML='<span class="muted" style="font-size:12px">No data</span>'});
     return;
   }
   const wins=f.filter(t=>t.result==='Win');
@@ -3448,6 +3545,7 @@ function renderStats(){
     durRows.join(''):
     missingNote||'<span class="muted" style="font-size:12px">No duration data yet — enter entry & exit times when logging.</span>';
   renderBiasAnalytics();
+  renderRuleViolations(f);
 }
 
 // ============================================================
@@ -3866,6 +3964,73 @@ function renderPropChallenge(){
 }
 
 // -- BIAS ANALYTICS --
+// ── RULE VIOLATIONS ANALYTICS ────────────────────────────────────────────────
+function renderRuleViolations(f){
+  const el=document.getElementById('a-rule-viols');
+  if(!el)return;
+  // Collect all trades that have violations
+  const violTrades=f.filter(t=>{const m=parseMetaTag(t.notes);return m.viols&&m.viols.length;});
+  if(!violTrades.length){
+    el.innerHTML='<span class="muted" style="font-size:12px">No rule violations logged for this period</span>';
+    return;
+  }
+  // Build violation frequency map: ruleId → {count, pnl, wins, losses}
+  const map={};
+  violTrades.forEach(t=>{
+    const{viols}=parseMetaTag(t.notes);
+    viols.forEach(rid=>{
+      if(!map[rid])map[rid]={count:0,pnl:0,wins:0,losses:0};
+      map[rid].count++;
+      map[rid].pnl+=parseFloat(t.pnl)||0;
+      if(t.result==='Win')map[rid].wins++;
+      if(t.result==='Loss')map[rid].losses++;
+    });
+  });
+  // Sort by frequency
+  const sorted=Object.entries(map).sort((a,b)=>b[1].count-a[1].count);
+  const maxCount=sorted[0][1].count;
+  // Build rule text lookup from rulesData
+  const ruleMap={};
+  (rulesData||[]).forEach(r=>ruleMap[r.id]=r.rule);
+  // Summary line
+  const totalViols=sorted.reduce((s,[,v])=>s+v.count,0);
+  el.innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0 12px;border-bottom:1px solid #1A1A1A;margin-bottom:12px">'+
+      '<div>'+
+        '<div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Total Violations</div>'+
+        '<div style="font-size:26px;font-weight:800;color:#E05252;font-family:DM Mono,monospace;line-height:1">'+totalViols+'</div>'+
+        '<div style="font-size:9px;color:#333;font-family:DM Mono,monospace">across '+violTrades.length+' trade'+(violTrades.length!==1?'s':'')+'</div>'+
+      '</div>'+
+      '<div style="text-align:right">'+
+        '<div style="font-size:9px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Most Broken</div>'+
+        '<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;max-width:120px;text-align:right;line-height:1.4">'+
+          (ruleMap[sorted[0][0]]?sorted[0][1].count+'× — '+ruleMap[sorted[0][0]].substring(0,40)+(ruleMap[sorted[0][0]].length>40?'…':''):'Rule '+sorted[0][0])+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    sorted.map(([rid,v])=>{
+      const ruleTxt=ruleMap[rid]||'Rule '+rid;
+      const barW=Math.round(v.count/maxCount*100);
+      const cl=v.losses+v.wins>0?Math.round(v.wins/(v.losses+v.wins)*100):null;
+      const pnlCol=pc(v.pnl);
+      return'<div style="padding:9px 0;border-bottom:1px solid #161616">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">'+
+          '<div style="flex:1;min-width:0;margin-right:8px">'+
+            '<div style="font-size:10px;color:#C9C9C9;line-height:1.5;margin-bottom:2px">'+ruleTxt+'</div>'+
+          '</div>'+
+          '<div style="text-align:right;flex-shrink:0">'+
+            '<div style="font-size:12px;font-weight:700;color:#E05252;font-family:DM Mono,monospace">'+v.count+'×</div>'+
+            '<div style="font-size:10px;color:'+pnlCol+';font-family:DM Mono,monospace">'+fp(v.pnl)+'</div>'+
+          '</div>'+
+        '</div>'+
+        '<div style="background:#131313;border-radius:99px;height:3px;overflow:hidden">'+
+          '<div style="width:'+barW+'%;height:100%;border-radius:99px;background:#E05252;transition:width .5s"></div>'+
+        '</div>'+
+        (cl!==null?'<div style="font-size:9px;color:#2A2A2A;font-family:DM Mono,monospace;margin-top:3px">Win rate on violated trades: '+cl+'%</div>':'')+
+      '</div>';
+    }).join('');
+}
+// ─────────────────────────────────────────────────────────────────────────────
 function renderBiasAnalytics(){
   const el=document.getElementById('a-bias-acc');
   if(!el)return;
@@ -4273,6 +4438,102 @@ window.changeRole=async(uid,role,btn)=>{
 // === RULES ===
 // ============================================================
 // -- RULES --
+// ── RISK CALCULATOR ──────────────────────────────────────────────────────────
+window.toggleCalc=function(){
+  const hdr=document.getElementById('calc-hdr');
+  const body=document.getElementById('calc-body');
+  const arrow=document.getElementById('calc-arrow');
+  if(!hdr||!body)return;
+  const open=body.classList.toggle('open');
+  hdr.classList.toggle('open',open);
+  arrow.textContent=open?'−':'+';
+  // Pre-fill balance from profile
+  if(open){
+    const balEl=document.getElementById('calc-bal');
+    if(balEl&&!balEl.value&&CP&&CP.starting_balance)balEl.value=CP.starting_balance;
+    runCalc();
+  }
+};
+window.runCalc=function(){
+  const bal=parseFloat(document.getElementById('calc-bal')?.value)||0;
+  const risk=parseFloat(document.getElementById('calc-risk')?.value)||1;
+  const entry=parseFloat(document.getElementById('calc-entry')?.value)||0;
+  const sl=parseFloat(document.getElementById('calc-sl')?.value)||0;
+  const res=document.getElementById('calc-result');
+  if(!bal||!entry||!sl||!res){if(res)res.classList.remove('show');return;}
+  const slPips=Math.abs(entry-sl);
+  if(slPips<0.001){res.classList.remove('show');return;}
+  // XAUUSD: 1 lot = $100 per point (1 pip = $1 for 0.01 lot)
+  const riskAmt=bal*(risk/100);
+  const lotRaw=riskAmt/(slPips*100);
+  const lot=Math.floor(lotRaw*100)/100; // floor to 2dp — never over-risk
+  const lotOut=document.getElementById('calc-lot-out');
+  const riskOut=document.getElementById('calc-risk-out');
+  if(lotOut)lotOut.textContent=lot.toFixed(2)+' lots';
+  if(riskOut)riskOut.textContent='$'+riskAmt.toFixed(2)+' at risk · SL '+slPips.toFixed(2)+' pts';
+  res.classList.add('show');
+};
+window.applyCalcLot=function(){
+  const lotOut=document.getElementById('calc-lot-out');
+  if(!lotOut)return;
+  const val=parseFloat(lotOut.textContent);
+  if(!val||isNaN(val))return;
+  const lotsEl=document.getElementById('f-lots');
+  if(lotsEl){lotsEl.value=val.toFixed(2);}
+  // Collapse calculator after applying
+  const body=document.getElementById('calc-body');
+  const hdr=document.getElementById('calc-hdr');
+  const arrow=document.getElementById('calc-arrow');
+  if(body){body.classList.remove('open');}
+  if(hdr){hdr.classList.remove('open');}
+  if(arrow){arrow.textContent='+';}
+  flash('ok','Lot size '+val.toFixed(2)+' applied.');
+};
+
+// ── RULE CHECK ────────────────────────────────────────────────────────────────
+window.toggleRuleCheck=function(){
+  const hdr=document.getElementById('rc-hdr');
+  const body=document.getElementById('rc-body');
+  const arrow=document.getElementById('rc-arrow');
+  if(!hdr||!body)return;
+  const open=body.classList.toggle('open');
+  hdr.classList.toggle('open',open);
+  arrow.textContent=open?'−':'+';
+  if(open)populateRuleCheck();
+};
+function populateRuleCheck(){
+  const list=document.getElementById('rc-list');
+  if(!list)return;
+  if(list.children.length)return; // already populated
+  if(!rulesData||!rulesData.length){
+    list.innerHTML='<div style="font-size:11px;color:#444;font-family:DM Mono,monospace;padding:6px 0">No rules saved yet. Add rules in the Rules tab first.</div>';
+    return;
+  }
+  list.innerHTML=rulesData.map(r=>
+    '<label class="rc-item" id="rc-item-'+r.id+'">'+
+      '<input type="checkbox" value="'+r.id+'" onchange="updateRuleBadge(this)">'+
+      '<span class="rc-item-txt">'+r.rule+'</span>'+
+    '</label>'
+  ).join('');
+}
+window.updateRuleBadge=function(cb){
+  // Highlight the item
+  const item=cb.closest('.rc-item');
+  if(item)item.classList.toggle('checked',cb.checked);
+  // Update count badge
+  const checked=document.querySelectorAll('#rc-list input[type=checkbox]:checked').length;
+  const badge=document.getElementById('rc-count-badge');
+  if(badge){
+    if(checked>0){badge.textContent=checked+' broken';badge.style.display='inline';}
+    else{badge.style.display='none';}
+  }
+};
+// Reset rule check list when rules are reloaded (e.g. after adding a new rule)
+function resetRuleCheckList(){
+  const list=document.getElementById('rc-list');
+  if(list)list.innerHTML=''; // force repopulate next time it opens
+}
+// ─────────────────────────────────────────────────────────────────────────────
 let rulesData=[];
 let ruleCat='all';
 
@@ -4298,9 +4559,8 @@ async function loadRules(){
     rulesData=data.map(function(r){return{id:r.id,cat:r.cat,rule:r.rule,why:r.why||'',created:r.created_at}});
   }
   renderRules();
-}
-
-document.getElementById('rule-cats').addEventListener('click',function(e){
+  resetRuleCheckList();
+}document.getElementById('rule-cats').addEventListener('click',function(e){
   const b=e.target.closest('.ptab');if(!b)return;
   ruleCat=b.getAttribute('data-cat');
   document.querySelectorAll('#rule-cats .ptab').forEach(function(x){x.classList.remove('on')});
