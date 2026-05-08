@@ -5080,8 +5080,8 @@ async function loadAnalyzerChart(){
     const chg=last.c-prev.c;
     const pd=document.getElementById('az-price-display');
     if(pd){
-      const cc=chg>=0?'#2DB87C':'#E05252';
-      pd.innerHTML='<span style="color:'+cc+'">'+last.c.toFixed(2)+'</span> <span style="font-size:9px;color:'+cc+';margin-left:4px">'+(chg>=0?'+':'')+chg.toFixed(2)+'</span>';
+      const priceCol=chg>=0?'#2DB87C':'#E05252';
+      pd.innerHTML='<span style="color:'+priceCol+'">'+last.c.toFixed(2)+'</span> <span style="font-size:9px;color:'+priceCol+';margin-left:4px">'+(chg>=0?'+':'')+chg.toFixed(2)+'</span>';
     }
     const ct=document.getElementById('az-chart-title');
     const tfLbl={'1h':'1H HTF','15min':'15M Entry','5min':'5M Precision'}[_azTF]||_azTF;
