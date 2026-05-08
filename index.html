@@ -164,6 +164,34 @@ select option{background:#181818;color:#E2DDD6}
 .flash.show{display:flex}
 .flash button{background:none;border:none;color:inherit;cursor:pointer;font-size:17px}
 
+/* ANALYZER TAB */
+.az-card{background:#0D0D0D;border:1px solid #1C1C1C;border-radius:9px;padding:13px 14px;margin-bottom:8px}
+.az-hdr{font-size:8px;color:#444;letter-spacing:.12em;text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:10px}
+.az-tf-btns{display:flex;gap:5px;margin-bottom:10px}
+.az-tf-btn{background:#111;border:1px solid #1C1C1C;border-radius:5px;padding:5px 12px;color:#444;font-size:10px;font-family:'DM Mono',monospace;cursor:pointer;transition:all .2s}
+.az-tf-btn.on{background:rgba(201,168,76,.08);border-color:rgba(201,168,76,.3);color:#C9A84C}
+.az-chart-wrap{background:#080808;border:1px solid #181818;border-radius:7px;overflow:hidden;margin-bottom:10px;position:relative;min-height:200px}
+.az-chart-loading{display:flex;align-items:center;justify-content:center;height:200px;color:#2A2A2A;font-size:11px;font-family:'DM Mono',monospace}
+.az-conf-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #141414}
+.az-conf-row:last-child{border-bottom:none}
+.az-conf-label{font-size:11px;color:#666}
+.az-conf-val{font-size:10px;font-family:'DM Mono',monospace;font-weight:700}
+.az-grade{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;font-size:15px;font-weight:800;font-family:'DM Mono',monospace}
+.az-grade-A{background:rgba(45,184,124,.12);color:#2DB87C;border:2px solid rgba(45,184,124,.3)}
+.az-grade-B{background:rgba(201,168,76,.12);color:#C9A84C;border:2px solid rgba(201,168,76,.3)}
+.az-grade-C{background:rgba(224,82,82,.1);color:#E05252;border:2px solid rgba(224,82,82,.25)}
+.az-grade-X{background:rgba(80,80,80,.1);color:#333;border:2px solid #1C1C1C}
+.az-btn{padding:9px 16px;border-radius:7px;font-size:11px;font-family:'DM Mono',monospace;font-weight:700;cursor:pointer;border:none;transition:all .2s}
+.az-btn-primary{background:linear-gradient(135deg,#C9A84C,#E8C97A);color:#000}
+.az-btn-primary:disabled{background:#1C1C1C;color:#333;cursor:not-allowed}
+.az-btn-ghost{background:#111;border:1px solid #1C1C1C;color:#555}
+.az-btn-ghost:hover{border-color:#333;color:#888}
+.az-thinking{display:flex;align-items:center;gap:8px;padding:10px 0;color:#444;font-size:11px;font-family:'DM Mono',monospace}
+.az-dot{width:6px;height:6px;border-radius:50%;background:#C9A84C;animation:azPulse 1s ease-in-out infinite}
+.az-dot:nth-child(2){animation-delay:.2s}
+.az-dot:nth-child(3){animation-delay:.4s}
+@keyframes azPulse{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
+
 /* RULE CHECK (log form) */
 .rc-hdr{display:flex;align-items:center;justify-content:space-between;padding:9px 11px;background:#0D0D0D;border:1px solid #1C1C1C;border-radius:7px;cursor:pointer;margin-bottom:0;transition:border-color .2s}
 .rc-hdr.open{border-radius:7px 7px 0 0;border-color:rgba(201,168,76,.2)}
@@ -413,6 +441,7 @@ select option{background:#181818;color:#E2DDD6}
       <button class="nbtn" data-tab="stats">Analytics</button>
       <button class="nbtn" data-tab="archive">📁 Archive</button>
       <button class="nbtn" data-tab="rules">📋 Rules</button>
+      <button class="nbtn" data-tab="analyzer">🔬 Analyzer</button>
     </div>
     <div class="umenu">
       <div class="ubtn-wrap">
@@ -946,8 +975,66 @@ select option{background:#181818;color:#E2DDD6}
     <div id="rules-list"><span class="muted">Loading rules...</span></div>
   </div>
 
+  <!-- ANALYZER TAB -->
+  <div id="tab-analyzer" class="tc">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:2px">🔬 ToxikWick Analyzer</div>
+        <div style="font-size:10px;color:#444;font-family:'DM Mono',monospace">Real-time XAUUSD · SMC Confluence Check</div>
+      </div>
+      <div id="az-session-indicator" style="font-size:9px;font-family:'DM Mono',monospace;text-align:right"></div>
+    </div>
+
+    <!-- Pre-Session Quick Check -->
+    <div class="az-card" style="border-color:rgba(201,168,76,.15)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:9px;color:#C9A84C;letter-spacing:.12em;text-transform:uppercase;font-family:'DM Mono',monospace">⚡ Pre-Session Quick Check</div>
+        <div id="az-clock" style="font-size:11px;color:#444;font-family:'DM Mono',monospace"></div>
+      </div>
+      <div id="az-presession-readout" style="font-size:11px;color:#555;font-family:'DM Mono',monospace;line-height:1.8">Tap "Load Charts" to begin your pre-session analysis</div>
+    </div>
+
+    <!-- Timeframe selector -->
+    <div class="az-card">
+      <div class="az-hdr">Chart Timeframe</div>
+      <div class="az-tf-btns">
+        <button class="az-tf-btn on" data-tf="1h" onclick="selectTF(this)">1H · HTF</button>
+        <button class="az-tf-btn" data-tf="15min" onclick="selectTF(this)">15M · Entry</button>
+        <button class="az-tf-btn" data-tf="5min" onclick="selectTF(this)">5M · Precision</button>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="az-btn az-btn-primary" id="az-load-btn" onclick="loadAnalyzerChart()">Load Chart</button>
+        <button class="az-btn az-btn-ghost" id="az-refresh-btn" onclick="loadAnalyzerChart()" style="display:none">↻ Refresh</button>
+      </div>
+      <div id="az-last-updated" style="font-size:9px;color:#2A2A2A;font-family:'DM Mono',monospace;margin-top:6px"></div>
+    </div>
+
+    <!-- Chart -->
+    <div class="az-card" id="az-chart-card" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div class="az-hdr" style="margin-bottom:0" id="az-chart-title">XAUUSD</div>
+        <div id="az-price-display" style="font-size:13px;font-weight:700;font-family:'DM Mono',monospace;color:#E2DDD6"></div>
+      </div>
+      <div class="az-chart-wrap" id="az-chart-wrap">
+        <div class="az-chart-loading" id="az-chart-loading">Loading candles...</div>
+      </div>
+      <!-- Key levels legend -->
+      <div id="az-levels-list" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px"></div>
+    </div>
+
+    <!-- AI Confluence Analysis -->
+    <div class="az-card" id="az-analysis-card" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="az-hdr" style="margin-bottom:0">ToxikWick Confluence Check</div>
+        <button class="az-btn az-btn-primary" id="az-analyze-btn" onclick="runAIAnalysis()">Run Analysis</button>
+      </div>
+      <div id="az-analysis-output">
+        <div style="font-size:11px;color:#333;font-family:'DM Mono',monospace;text-align:center;padding:16px 0">Tap Run Analysis to check confluences on the loaded candles</div>
+      </div>
+    </div>
+
   </div>
-</div>
 
 <!-- SETTINGS MODAL -->
 <!-- WEEKLY BIAS MODAL -->
@@ -1067,6 +1154,8 @@ select option{background:#181818;color:#E2DDD6}
 const SB_URL='https://pewkiwknniphfwhnoxsv.supabase.co';
 const SB_KEY='sb_publishable_l4PTYKlCiPoVGkQZj0loWQ_JMHGkGd3';
 const AUTH_URL=SB_URL+'/auth/v1';
+const TD_KEY='69cac9ece41641fbae1a9813ed1fafe3';
+const TD_URL='https://api.twelvedata.com';
 const STORAGE_URL=SB_URL+'/storage/v1';
 
 // Session stored in localStorage
@@ -1347,6 +1436,7 @@ document.getElementById('main-nav').addEventListener('click',e=>{
   if(t==='archive')renderArchive();
   if(t==='rules')renderRules();
   if(t==='stats')renderStats();
+  if(t==='analyzer')initAnalyzer();
 });
 function wirePtabs(id,cb){
   document.getElementById(id).addEventListener('click',e=>{
@@ -4890,10 +4980,469 @@ window.saveQuickTrade=async function(){
   if(error){flash('err','Save failed: '+error.message);btn.disabled=false;btn.textContent='&#9889; LOG TRADE';return}
   trades=[data[0],...trades];
   renderDash();renderHist();renderStats();
+// ── ANALYZER ──────────────────────────────────────────────────────────────────
+let _azTF='1h';        // current timeframe
+let _azCandles=[];     // last loaded candles
+let _azLoading=false;
+
+// WAT = UTC+1. Session windows in WAT hours (24h)
+const AZ_SESSIONS={
+  asia:{name:'Asia',start:22,end:26,col:'rgba(100,140,255,.08)',labelCol:'#7B8FF7'},   // 10PM–2AM WAT (26 = 2AM next day)
+  ny:{name:'NY',start:11,end:17,col:'rgba(201,168,76,.06)',labelCol:'#C9A84C'}          // 11AM–5PM WAT
+};
+
+// ── Clock & session indicator ──
+function azUpdateClock(){
+  const el=document.getElementById('az-clock');
+  const si=document.getElementById('az-session-indicator');
+  const pr=document.getElementById('az-presession-readout');
+  if(!el)return;
+  const now=new Date();
+  // WAT = UTC+1
+  const watH=((now.getUTCHours()+1)%24);
+  const watM=now.getUTCMinutes();
+  const pad=n=>String(n).padStart(2,'0');
+  el.textContent=pad(watH)+':'+pad(watM)+' WAT';
+  // Session detection
+  let sessName='', sessCol='#444';
+  if(watH>=22||(watH>=0&&watH<2)){sessName='Asia Session';sessCol='#7B8FF7';}
+  else if(watH>=10&&watH<10.5){sessName='⚡ Asia Pre-Session';sessCol='#C9A84C';}
+  else if(watH>=11&&watH<17){sessName='NY Session';sessCol='#C9A84C';}
+  else if(watH>=10.75&&watH<11){sessName='⚡ NY Pre-Session';sessCol='#C9A84C';}
+  else{sessName='No Active Session';sessCol='#2A2A2A';}
+  if(si)si.innerHTML='<span style="font-size:9px;padding:3px 8px;border-radius:3px;background:'+sessCol+'18;color:'+sessCol+';border:1px solid '+sessCol+'33;font-family:DM Mono,monospace">'+sessName+'</span>';
+  // Pre-session readout if no candles loaded yet
+  if(!_azCandles.length&&pr){
+    const tip=watH>=22||watH<2?'Asia session active — load 15M chart for entry confirmation':
+      watH>=11&&watH<17?'NY session active — load 15M chart for entry confirmation':
+      watH===10?'Asia pre-session — load 1H chart now to mark HTF structure':
+      watH===11?'NY pre-session — load 1H chart now to mark HTF structure':
+      'Outside session hours — use this time to review HTF structure';
+    pr.textContent=tip;
+  }
+}
+
+function selectTF(btn){
+  document.querySelectorAll('.az-tf-btn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  _azTF=btn.getAttribute('data-tf');
+  // Reset chart if loaded
+  if(_azCandles.length)loadAnalyzerChart();
+}
+
+// ── Fetch candles from Twelve Data ──
+async function loadAnalyzerChart(){
+  if(_azLoading)return;
+  _azLoading=true;
+  const loadBtn=document.getElementById('az-load-btn');
+  const refBtn=document.getElementById('az-refresh-btn');
+  if(loadBtn){loadBtn.disabled=true;loadBtn.textContent='Loading...';}
+  // Show chart card
+  const cc=document.getElementById('az-chart-card');
+  const ac=document.getElementById('az-analysis-card');
+  if(cc)cc.style.display='block';
+  if(ac)ac.style.display='none'; // reset analysis
+  document.getElementById('az-analysis-output').innerHTML=
+    '<div style="font-size:11px;color:#333;font-family:DM Mono,monospace;text-align:center;padding:16px 0">Tap Run Analysis to check confluences on the loaded candles</div>';
+  // Show loading state
+  const wrap=document.getElementById('az-chart-wrap');
+  if(wrap)wrap.innerHTML='<div class="az-chart-loading">Fetching real candles...</div>';
+  try{
+    const outputsize=_azTF==='5min'?60:_azTF==='15min'?60:50;
+    const url=`${TD_URL}/time_series?symbol=XAU/USD&interval=${_azTF}&outputsize=${outputsize}&apikey=${TD_KEY}`;
+    const r=await fetch(url);
+    const d=await r.json();
+    if(d.status==='error'||!d.values||!d.values.length){
+      if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">'+( d.message||'Failed to load candles')+'</div>';
+      _azLoading=false;if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
+      return;
+    }
+    // Twelve Data returns newest first — reverse to oldest first
+    _azCandles=[...d.values].reverse().map(c=>({
+      t:new Date(c.datetime),
+      o:parseFloat(c.open),
+      h:parseFloat(c.high),
+      l:parseFloat(c.low),
+      c:parseFloat(c.close),
+    }));
+    renderAZChart();
+    if(cc)cc.style.display='block';
+    if(ac)ac.style.display='block';
+    if(refBtn)refBtn.style.display='inline-flex';
+    const lu=document.getElementById('az-last-updated');
+    if(lu)lu.textContent='Updated '+new Date().toLocaleTimeString();
+    // Update price display
+    const last=_azCandles[_azCandles.length-1];
+    const prev=_azCandles[_azCandles.length-2];
+    const chg=last.c-prev.c;
+    const pd=document.getElementById('az-price-display');
+    if(pd){
+      const cc=chg>=0?'#2DB87C':'#E05252';
+      pd.innerHTML='<span style="color:'+cc+'">'+last.c.toFixed(2)+'</span> <span style="font-size:9px;color:'+cc+';margin-left:4px">'+(chg>=0?'+':'')+chg.toFixed(2)+'</span>';
+    }
+    const ct=document.getElementById('az-chart-title');
+    const tfLbl={h:'1H HTF','15min':'15M Entry','5min':'5M Precision'}[_azTF]||_azTF;
+    if(ct)ct.textContent='XAU/USD · '+tfLbl;
+    // Pre-session readout update
+    updatePresessionReadout();
+  }catch(e){
+    if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">Network error. Check connection.</div>';
+  }
+  _azLoading=false;
+  if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
+}
+
+// ── SVG Candlestick Chart Renderer ──
+function renderAZChart(){
+  const wrap=document.getElementById('az-chart-wrap');
+  if(!wrap||!_azCandles.length)return;
+  const W=wrap.clientWidth||340;
+  const H=240;
+  const PAD={t:20,b:30,l:8,r:48};
+  const cW=W-PAD.l-PAD.r;
+  const cH=H-PAD.t-PAD.b;
+  const n=_azCandles.length;
+  const candleW=Math.max(2,Math.floor(cW/n)-1);
+  const allH=_azCandles.map(c=>c.h),allL=_azCandles.map(c=>c.l);
+  let minP=Math.min(...allL),maxP=Math.max(...allH);
+  const range=maxP-minP||1;
+  // Add 5% padding top and bottom
+  minP-=range*0.05;maxP+=range*0.05;
+  const totalRange=maxP-minP;
+  const yS=v=>PAD.t+cH-(((v-minP)/totalRange)*cH);
+  const xS=i=>PAD.l+(i/n)*cW+(candleW/2);
+  // Y-axis price labels
+  const priceStep=niceNum(totalRange/4);
+  const priceStart=Math.ceil(minP/priceStep)*priceStep;
+  let yLabels='',yGrids='';
+  for(let p=priceStart;p<=maxP;p+=priceStep){
+    const y=yS(p);
+    yLabels+=`<text x="${W-PAD.r+4}" y="${(y+3).toFixed(1)}" font-size="8" fill="#2A2A2A" font-family="DM Mono,monospace" text-anchor="start">${p.toFixed(0)}</text>`;
+    yGrids+=`<line x1="${PAD.l}" y1="${y.toFixed(1)}" x2="${W-PAD.r}" y2="${y.toFixed(1)}" stroke="#141414" stroke-width="0.7"/>`;
+  }
+  // Session background shading
+  let sessionBg='';
+  _azCandles.forEach((c,i)=>{
+    const watH=(c.t.getUTCHours()+1)%24;
+    let bg='';
+    if(watH>=22||watH<2)bg='rgba(100,140,255,.06)';       // Asia
+    else if(watH>=11&&watH<17)bg='rgba(201,168,76,.05)';  // NY
+    if(bg){
+      const x=PAD.l+(i/n)*cW;
+      const bw=Math.ceil(cW/n)+1;
+      sessionBg+=`<rect x="${x.toFixed(1)}" y="${PAD.t}" width="${bw}" height="${cH}" fill="${bg}"/>`;
+    }
+  });
+  // Key levels detection
+  const levels=detectKeyLevels(_azCandles,minP,maxP);
+  let levelLines='';
+  levels.forEach(lv=>{
+    const y=yS(lv.price);
+    levelLines+=`<line x1="${PAD.l}" y1="${y.toFixed(1)}" x2="${W-PAD.r}" y2="${y.toFixed(1)}" stroke="${lv.col}" stroke-width="${lv.w}" stroke-dasharray="${lv.dash}"/>`;
+    levelLines+=`<text x="${W-PAD.r+4}" y="${(y-2).toFixed(1)}" font-size="7" fill="${lv.col}" font-family="DM Mono,monospace" text-anchor="start">${lv.label}</text>`;
+  });
+  // Candles
+  let candles='';
+  _azCandles.forEach((c,i)=>{
+    const x=xS(i);
+    const isBull=c.c>=c.o;
+    const col=isBull?'#2DB87C':'#E05252';
+    const bodyTop=yS(Math.max(c.o,c.c));
+    const bodyBot=yS(Math.min(c.o,c.c));
+    const bodyH=Math.max(1,bodyBot-bodyTop);
+    const xL=x-candleW/2;
+    // Wick
+    candles+=`<line x1="${x.toFixed(1)}" y1="${yS(c.h).toFixed(1)}" x2="${x.toFixed(1)}" y2="${yS(c.l).toFixed(1)}" stroke="${col}" stroke-width="1"/>`;
+    // Body
+    candles+=`<rect x="${xL.toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${candleW}" height="${bodyH.toFixed(1)}" fill="${col}" rx="0.5"/>`;
+  });
+  // X-axis time labels — show ~5 labels
+  let xLabels='';
+  const labelStep=Math.floor(n/5)||1;
+  _azCandles.forEach((c,i)=>{
+    if(i%labelStep!==0&&i!==n-1)return;
+    const x=xS(i);
+    const h=String(c.t.getUTCHours()+1).padStart(2,'0'); // WAT
+    const m=String(c.t.getUTCMinutes()).padStart(2,'0');
+    xLabels+=`<text x="${x.toFixed(1)}" y="${H-8}" font-size="7.5" fill="#222" font-family="DM Mono,monospace" text-anchor="middle">${h}:${m}</text>`;
+  });
+  // Last price line
+  const lastP=_azCandles[n-1].c;
+  const lastY=yS(lastP);
+  const lastCol=_azCandles[n-1].c>=_azCandles[n-1].o?'#2DB87C':'#E05252';
+  const lastLine=`<line x1="${PAD.l}" y1="${lastY.toFixed(1)}" x2="${W-PAD.r}" y2="${lastY.toFixed(1)}" stroke="${lastCol}" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.6"/>`;
+  wrap.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block">${yGrids}${sessionBg}${levelLines}${candles}${lastLine}${yLabels}${xLabels}</svg>`;
+  // Level legend
+  renderLevelLegend(levels);
+}
+
+function niceNum(v){
+  const e=Math.pow(10,Math.floor(Math.log10(v)));
+  const f=v/e;
+  return(f<1.5?1:f<3?2:f<7?5:10)*e;
+}
+
+function detectKeyLevels(candles,minP,maxP){
+  const levels=[];
+  const last=candles[candles.length-1].c;
+  // Round numbers — every $50 near current price
+  const rndBase=Math.round(last/50)*50;
+  for(let r=rndBase-150;r<=rndBase+150;r+=50){
+    if(r>minP&&r<maxP){
+      const dist=Math.abs(r-last);
+      levels.push({price:r,label:'$'+r,col:'rgba(201,168,76,.4)',w:0.8,dash:'4,3',type:'round'});
+    }
+  }
+  // Recent swing high — highest high in last 20 candles (excluding last 3)
+  const lookback=Math.min(candles.length-3,20);
+  if(lookback>0){
+    const swing=candles.slice(-lookback-3,-3);
+    const swingH=Math.max(...swing.map(c=>c.h));
+    const swingL=Math.min(...swing.map(c=>c.l));
+    if(swingH>minP&&swingH<maxP&&Math.abs(swingH-last)>5)
+      levels.push({price:swingH,label:'SwH',col:'rgba(45,184,124,.5)',w:1,dash:'3,2',type:'high'});
+    if(swingL>minP&&swingL<maxP&&Math.abs(swingL-last)>5)
+      levels.push({price:swingL,label:'SwL',col:'rgba(224,82,82,.5)',w:1,dash:'3,2',type:'low'});
+  }
+  // Equal highs / equal lows (within 0.5 points)
+  const eqThresh=0.5;
+  const highs=candles.slice(-30).map(c=>c.h);
+  const lows=candles.slice(-30).map(c=>c.l);
+  let eqH=null,eqL=null;
+  for(let i=0;i<highs.length-1;i++){
+    for(let j=i+1;j<highs.length;j++){
+      if(Math.abs(highs[i]-highs[j])<eqThresh&&highs[i]>minP&&highs[i]<maxP){eqH=highs[i];break;}
+    }
+    if(eqH)break;
+  }
+  for(let i=0;i<lows.length-1;i++){
+    for(let j=i+1;j<lows.length;j++){
+      if(Math.abs(lows[i]-lows[j])<eqThresh&&lows[i]>minP&&lows[i]<maxP){eqL=lows[i];break;}
+    }
+    if(eqL)break;
+  }
+  if(eqH)levels.push({price:eqH,label:'EqH',col:'rgba(45,184,124,.35)',w:0.8,dash:'2,3',type:'eqhigh'});
+  if(eqL)levels.push({price:eqL,label:'EqL',col:'rgba(224,82,82,.35)',w:0.8,dash:'2,3',type:'eqlow'});
+  return levels;
+}
+
+function renderLevelLegend(levels){
+  const el=document.getElementById('az-levels-list');
+  if(!el)return;
+  const types=[
+    {key:'round',label:'Round $',col:'#C9A84C'},
+    {key:'high',label:'Swing High',col:'#2DB87C'},
+    {key:'low',label:'Swing Low',col:'#E05252'},
+    {key:'eqhigh',label:'Equal Highs',col:'#2DB87C'},
+    {key:'eqlow',label:'Equal Lows',col:'#E05252'},
+  ];
+  const found=new Set(levels.map(l=>l.type));
+  el.innerHTML=types.filter(t=>found.has(t.key)).map(t=>
+    `<span style="font-size:8px;padding:2px 6px;border-radius:3px;background:${t.col}15;color:${t.col};border:1px solid ${t.col}30;font-family:DM Mono,monospace">${t.label}</span>`
+  ).join('');
+}
+
+// ── Pre-session readout ──
+function updatePresessionReadout(){
+  const pr=document.getElementById('az-presession-readout');
+  if(!pr||!_azCandles.length)return;
+  const candles=_azCandles;
+  const last=candles[candles.length-1];
+  const now=new Date();
+  const watH=((now.getUTCHours()+1)%24);
+  // Detect trend from recent candles
+  const c20=candles.slice(-20);
+  const avgClose=c20.reduce((s,c)=>s+c.c,0)/c20.length;
+  const bias=last.c>avgClose?'Bullish':'Bearish';
+  const biasCol=bias==='Bullish'?'#2DB87C':'#E05252';
+  // Round numbers near price
+  const nearRound=Math.round(last.c/50)*50;
+  const distToRound=Math.abs(last.c-nearRound).toFixed(1);
+  // Nearest swing
+  const swH=Math.max(...candles.slice(-20,-3).map(c=>c.h)).toFixed(2);
+  const swL=Math.min(...candles.slice(-20,-3).map(c=>c.l)).toFixed(2);
+  const tfName=_azTF==='1h'?'1H':_azTF==='15min'?'15M':'5M';
+  const session=watH>=22||watH<2?'Asia':(watH>=11&&watH<17?'NY':'Pre-Session');
+  pr.innerHTML=
+    `<div style="font-size:8px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:8px">Session: ${session} · ${tfName} Chart</div>`+
+    `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">`+
+      `<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:5px;padding:7px 9px">`+
+        `<div style="font-size:8px;color:#333;font-family:DM Mono,monospace;margin-bottom:2px">HTF BIAS</div>`+
+        `<div style="font-size:12px;font-weight:700;color:${biasCol};font-family:DM Mono,monospace">${bias}</div>`+
+      `</div>`+
+      `<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:5px;padding:7px 9px">`+
+        `<div style="font-size:8px;color:#333;font-family:DM Mono,monospace;margin-bottom:2px">LAST PRICE</div>`+
+        `<div style="font-size:12px;font-weight:700;color:#E2DDD6;font-family:DM Mono,monospace">${last.c.toFixed(2)}</div>`+
+      `</div>`+
+      `<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:5px;padding:7px 9px">`+
+        `<div style="font-size:8px;color:#333;font-family:DM Mono,monospace;margin-bottom:2px">NEAREST ROUND</div>`+
+        `<div style="font-size:12px;font-weight:700;color:#C9A84C;font-family:DM Mono,monospace">$${nearRound} <span style="font-size:9px;font-weight:400">(${distToRound} pts)</span></div>`+
+      `</div>`+
+      `<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:5px;padding:7px 9px">`+
+        `<div style="font-size:8px;color:#333;font-family:DM Mono,monospace;margin-bottom:2px">SWING RANGE</div>`+
+        `<div style="font-size:10px;font-weight:700;color:#2DB87C;font-family:DM Mono,monospace">${swH}</div>`+
+        `<div style="font-size:10px;font-weight:700;color:#E05252;font-family:DM Mono,monospace">${swL}</div>`+
+      `</div>`+
+    `</div>`;
+}
+
+// ── AI Confluence Analysis ──
+async function runAIAnalysis(){
+  if(!_azCandles.length){flash('err','Load a chart first.');return;}
+  const btn=document.getElementById('az-analyze-btn');
+  const out=document.getElementById('az-analysis-output');
+  btn.disabled=true;btn.textContent='Analyzing...';
+  out.innerHTML='<div class="az-thinking"><div class="az-dot"></div><div class="az-dot"></div><div class="az-dot"></div><span>Claude is analyzing the candles...</span></div>';
+  // Build compact OHLC summary for Claude — last 30 candles
+  const recent=_azCandles.slice(-30);
+  const last=recent[recent.length-1];
+  const first=recent[0];
+  const watH=((new Date().getUTCHours()+1)%24);
+  const session=watH>=22||watH<2?'Asia':(watH>=11&&watH<17?'NY':'Outside session');
+  const tfLabel=_azTF==='1h'?'1-hour':_azTF==='15min'?'15-minute':'5-minute';
+  const ohlcSummary=recent.slice(-15).map((c,i)=>`${i+1}. O:${c.o.toFixed(2)} H:${c.h.toFixed(2)} L:${c.l.toFixed(2)} C:${c.c.toFixed(2)} ${c.c>=c.o?'▲':'▼'}`).join('\n');
+  // Swing levels
+  const swH=Math.max(...recent.slice(0,-3).map(c=>c.h)).toFixed(2);
+  const swL=Math.min(...recent.slice(0,-3).map(c=>c.l)).toFixed(2);
+  // Round numbers
+  const nearRound=Math.round(last.c/50)*50;
+  const prompt=`You are a professional SMC (Smart Money Concepts) trading analyst specializing in XAUUSD. Analyze this real-time ${tfLabel} XAUUSD data for ToxikWick strategy confluences.
+
+CURRENT CONTEXT:
+- Symbol: XAU/USD (Gold)
+- Timeframe: ${tfLabel}
+- Session: ${session}
+- Current Price: ${last.c.toFixed(2)}
+- Recent Swing High: ${swH}
+- Recent Swing Low: ${swL}
+- Nearest Round Number: $${nearRound}
+- Price range analyzed: ${first.t.toUTCString().substring(17,22)} to ${last.t.toUTCString().substring(17,22)}
+
+LAST 15 CANDLES (most recent at bottom):
+${ohlcSummary}
+
+ANALYZE FOR THESE 6 TOXIKWICK CONFLUENCES:
+1. Smart Money Presence — institutional displacement candle, large body, strong momentum
+2. Liquidity Sweep — price swept a recent high/low/equal level then reversed
+3. Rejection Candle — candle with significant wick (>60% of range) showing rejection at a level
+4. Draw on Liquidity — clear liquidity target (equal highs, equal lows, or round number) visible above or below
+5. HTF Bias Alignment — current price action aligned with the dominant trend direction
+6. Round Number Proximity — price within 5 points of a psychological $50 level
+
+RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
+{
+  "confluences": {
+    "smart_money": {"present": true/false, "detail": "one sentence"},
+    "liquidity_sweep": {"present": true/false, "detail": "one sentence"},
+    "rejection_candle": {"present": true/false, "detail": "one sentence"},
+    "draw_on_liquidity": {"present": true/false, "detail": "one sentence"},
+    "htf_bias": {"present": true/false, "detail": "one sentence", "direction": "Bullish/Bearish/Unclear"},
+    "round_number": {"present": true/false, "detail": "one sentence"}
+  },
+  "grade": "A/B/C/X",
+  "direction": "Long/Short/Wait",
+  "entry_zone": "price range or 'No setup'",
+  "sl_suggestion": "price level or 'N/A'",
+  "summary": "2-3 sentence overall assessment",
+  "missing": "what needs to happen for a higher grade setup"
+}`;
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1000,
+        messages:[{role:'user',content:prompt}]
+      })
+    });
+    const data=await resp.json();
+    const raw=data.content?.find(b=>b.type==='text')?.text||'';
+    // Parse JSON from response
+    let result;
+    try{
+      const clean=raw.replace(/```json|```/g,'').trim();
+      result=JSON.parse(clean);
+    }catch(e){
+      out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">Analysis returned unexpected format. Try again.</div>';
+      btn.disabled=false;btn.textContent='Run Analysis';return;
+    }
+    renderAnalysisResult(result);
+  }catch(e){
+    out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">Network error. Check connection and try again.</div>';
+  }
+  btn.disabled=false;btn.textContent='↻ Re-Analyze';
+}
+
+function renderAnalysisResult(r){
+  const out=document.getElementById('az-analysis-output');
+  if(!out||!r)return;
+  const gradeClass={'A':'az-grade-A','B':'az-grade-B','C':'az-grade-C','X':'az-grade-X'}[r.grade]||'az-grade-X';
+  const dirCol=r.direction==='Long'?'#2DB87C':r.direction==='Short'?'#E05252':'#444';
+  const confNames={
+    smart_money:'Smart Money Presence',
+    liquidity_sweep:'Liquidity Sweep',
+    rejection_candle:'Rejection Candle',
+    draw_on_liquidity:'Draw on Liquidity',
+    htf_bias:'HTF Bias Alignment',
+    round_number:'Round Number Proximity'
+  };
+  const confRows=Object.entries(r.confluences||{}).map(([key,val])=>{
+    const present=val.present;
+    const col=present?'#2DB87C':'#E05252';
+    const ico=present?'✓':'✗';
+    return`<div class="az-conf-row">`+
+      `<div class="az-conf-label">${confNames[key]||key}</div>`+
+      `<div style="display:flex;align-items:flex-start;gap:8px;flex:1;justify-content:flex-end;max-width:65%;text-align:right">`+
+        `<div style="font-size:9px;color:#444;font-family:DM Mono,monospace;line-height:1.4">${val.detail||''}</div>`+
+        `<div style="font-size:13px;font-weight:700;color:${col};flex-shrink:0">${ico}</div>`+
+      `</div>`+
+    `</div>`;
+  }).join('');
+  const metCount=Object.values(r.confluences||{}).filter(v=>v.present).length;
+  out.innerHTML=
+    // Grade + Direction header
+    `<div style="display:flex;align-items:center;gap:12px;padding-bottom:12px;border-bottom:1px solid #1A1A1A;margin-bottom:12px">`+
+      `<div class="az-grade ${gradeClass}">${r.grade||'X'}</div>`+
+      `<div style="flex:1">`+
+        `<div style="font-size:16px;font-weight:800;color:${dirCol};font-family:DM Mono,monospace">${r.direction||'Wait'}</div>`+
+        `<div style="font-size:10px;color:#444;font-family:DM Mono,monospace">${metCount}/6 confluences · ${r.grade==='A'?'High probability':r.grade==='B'?'Partial setup':r.grade==='C'?'Weak setup':'No setup'}</div>`+
+      `</div>`+
+    `</div>`+
+    // Confluence rows
+    confRows+
+    // Entry zone + SL
+    (r.entry_zone&&r.entry_zone!=='No setup'?
+      `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:12px;margin-bottom:10px">`+
+        `<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;padding:9px">`+
+          `<div style="font-size:8px;color:#444;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Entry Zone</div>`+
+          `<div style="font-size:12px;font-weight:700;color:${dirCol};font-family:DM Mono,monospace">${r.entry_zone}</div>`+
+        `</div>`+
+        `<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;padding:9px">`+
+          `<div style="font-size:8px;color:#444;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">SL Suggestion</div>`+
+          `<div style="font-size:12px;font-weight:700;color:#E05252;font-family:DM Mono,monospace">${r.sl_suggestion||'N/A'}</div>`+
+        `</div>`+
+      `</div>`:'')+
+    // Summary
+    `<div style="background:#0A0A0A;border:1px solid #161616;border-radius:6px;padding:10px 12px;margin-top:8px">`+
+      `<div style="font-size:9px;color:#444;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:5px">Analysis</div>`+
+      `<div style="font-size:11px;color:#888;line-height:1.6">${r.summary||''}</div>`+
+      (r.missing?`<div style="font-size:10px;color:#C9A84C;margin-top:8px;font-family:DM Mono,monospace">⚠ ${r.missing}</div>`:'')+
+    `</div>`;
+}
+
+// ── Init ──
+function initAnalyzer(){
+  azUpdateClock();
+  if(!window._azClockInterval)window._azClockInterval=setInterval(azUpdateClock,30000);
+}
+// ── END ANALYZER ──────────────────────────────────────────────────────────────
+
   closeModal('m-quick');
   flash('ok','Trade quick-logged! Edit full details in History.');
   btn.disabled=false;btn.textContent='&#9889; LOG TRADE';
 };
+
 
 </script>
 </body>
