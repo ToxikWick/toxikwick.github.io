@@ -4982,6 +4982,11 @@ window.saveQuickTrade=async function(){
   if(error){flash('err','Save failed: '+error.message);btn.disabled=false;btn.textContent='&#9889; LOG TRADE';return}
   trades=[data[0],...trades];
   renderDash();renderHist();renderStats();
+  closeModal('m-quick');
+  flash('ok','Trade quick-logged! Edit full details in History.');
+  btn.disabled=false;btn.textContent='&#9889; LOG TRADE';
+};
+
 // ── ANALYZER ──────────────────────────────────────────────────────────────────
 let _azTF='1h';        // current timeframe
 let _azCandles=[];     // last loaded candles
@@ -5450,11 +5455,6 @@ function initAnalyzer(){
   if(!window._azClockInterval)window._azClockInterval=setInterval(azUpdateClock,30000);
 }
 // ── END ANALYZER ──────────────────────────────────────────────────────────────
-
-  closeModal('m-quick');
-  flash('ok','Trade quick-logged! Edit full details in History.');
-  btn.disabled=false;btn.textContent='&#9889; LOG TRADE';
-};
 
 
 </script>
