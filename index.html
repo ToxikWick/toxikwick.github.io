@@ -1156,6 +1156,8 @@ const SB_KEY='sb_publishable_l4PTYKlCiPoVGkQZj0loWQ_JMHGkGd3';
 const AUTH_URL=SB_URL+'/auth/v1';
 const TD_KEY='69cac9ece41641fbae1a9813ed1fafe3';
 const TD_URL='https://api.twelvedata.com';
+const GEMINI_KEY='AIzaSyB2wbOaVgdA-cFgar39jQIxAtyOeuo2Wqw';
+const GEMINI_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 const STORAGE_URL=SB_URL+'/storage/v1';
 
 // Session stored in localStorage
@@ -5049,11 +5051,12 @@ async function loadAnalyzerChart(){
   if(wrap)wrap.innerHTML='<div class="az-chart-loading">Fetching real candles...</div>';
   try{
     const outputsize=_azTF==='5min'?60:_azTF==='15min'?60:50;
-    const url=`${TD_URL}/time_series?symbol=XAU/USD&interval=${_azTF}&outputsize=${outputsize}&apikey=${TD_KEY}`;
+    // XAU/USD must be encoded — slash breaks the URL path
+    const url=`${TD_URL}/time_series?symbol=XAU%2FUSD&interval=${_azTF}&outputsize=${outputsize}&apikey=${TD_KEY}`;
     const r=await fetch(url);
     const d=await r.json();
     if(d.status==='error'||!d.values||!d.values.length){
-      if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">'+( d.message||'Failed to load candles')+'</div>';
+      if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">'+(d.message||'Failed to load candles. Check API key or try again.')+'</div>';
       _azLoading=false;if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
       return;
     }
@@ -5081,7 +5084,7 @@ async function loadAnalyzerChart(){
       pd.innerHTML='<span style="color:'+cc+'">'+last.c.toFixed(2)+'</span> <span style="font-size:9px;color:'+cc+';margin-left:4px">'+(chg>=0?'+':'')+chg.toFixed(2)+'</span>';
     }
     const ct=document.getElementById('az-chart-title');
-    const tfLbl={h:'1H HTF','15min':'15M Entry','5min':'5M Precision'}[_azTF]||_azTF;
+    const tfLbl={'1h':'1H HTF','15min':'15M Entry','5min':'5M Precision'}[_azTF]||_azTF;
     if(ct)ct.textContent='XAU/USD · '+tfLbl;
     // Pre-session readout update
     updatePresessionReadout();
@@ -5292,8 +5295,8 @@ async function runAIAnalysis(){
   const btn=document.getElementById('az-analyze-btn');
   const out=document.getElementById('az-analysis-output');
   btn.disabled=true;btn.textContent='Analyzing...';
-  out.innerHTML='<div class="az-thinking"><div class="az-dot"></div><div class="az-dot"></div><div class="az-dot"></div><span>Claude is analyzing the candles...</span></div>';
-  // Build compact OHLC summary for Claude — last 30 candles
+  out.innerHTML='<div class="az-thinking"><div class="az-dot"></div><div class="az-dot"></div><div class="az-dot"></div><span>Gemini is analyzing the candles...</span></div>';
+  // Build compact OHLC summary — last 30 candles
   const recent=_azCandles.slice(-30);
   const last=recent[recent.length-1];
   const first=recent[0];
@@ -5347,18 +5350,28 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
   "missing": "what needs to happen for a higher grade setup"
 }`;
   try{
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+    // Gemini 1.5 Flash REST API — no server needed, works from browser
+    const resp=await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:1000,
-        messages:[{role:'user',content:prompt}]
+        contents:[{parts:[{text:prompt}]}],
+        generationConfig:{
+          temperature:0.1,       // low temperature for consistent structured output
+          maxOutputTokens:1024,
+          responseMimeType:'application/json'  // tells Gemini to return pure JSON
+        }
       })
     });
     const data=await resp.json();
-    const raw=data.content?.find(b=>b.type==='text')?.text||'';
-    // Parse JSON from response
+    // Gemini response structure: data.candidates[0].content.parts[0].text
+    if(!resp.ok||!data.candidates||!data.candidates.length){
+      const errMsg=data.error?.message||'Gemini API error. Check key or try again.';
+      out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">'+errMsg+'</div>';
+      btn.disabled=false;btn.textContent='Run Analysis';return;
+    }
+    const raw=data.candidates[0].content.parts[0].text||'';
+    // Parse JSON — Gemini may still wrap in backticks occasionally
     let result;
     try{
       const clean=raw.replace(/```json|```/g,'').trim();
