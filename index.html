@@ -1157,7 +1157,7 @@ const AUTH_URL=SB_URL+'/auth/v1';
 const TD_KEY='69cac9ece41641fbae1a9813ed1fafe3';
 const TD_URL='https://api.twelvedata.com';
 const GEMINI_KEY='AIzaSyB2wbOaVgdA-cFgar39jQIxAtyOeuo2Wqw';
-const GEMINI_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
+const GEMINI_URL='https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
 const STORAGE_URL=SB_URL+'/storage/v1';
 
 // Session stored in localStorage
@@ -4988,9 +4988,10 @@ window.saveQuickTrade=async function(){
 };
 
 // ── ANALYZER ──────────────────────────────────────────────────────────────────
-let _azTF='1h';        // current timeframe
-let _azCandles=[];     // last loaded candles
+let _azTF='1h';
+let _azCandles=[];
 let _azLoading=false;
+let _azViewState={offset:0,visible:30,yStretch:1.0}; // offset=candles from right scrolled off, visible=candles shown, yStretch=vertical zoom
 
 // WAT = UTC+1. Session windows in WAT hours (24h)
 const AZ_SESSIONS={
@@ -5055,8 +5056,7 @@ async function loadAnalyzerChart(){
   const wrap=document.getElementById('az-chart-wrap');
   if(wrap)wrap.innerHTML='<div class="az-chart-loading">Fetching real candles...</div>';
   try{
-    const outputsize=_azTF==='5min'?60:_azTF==='15min'?60:50;
-    // XAU/USD must be encoded — slash breaks the URL path
+    const outputsize=100; // always fetch 100 — display 30 initially, rest available for scrolling
     const url=`${TD_URL}/time_series?symbol=XAU%2FUSD&interval=${_azTF}&outputsize=${outputsize}&apikey=${TD_KEY}`;
     const r=await fetch(url);
     const d=await r.json();
@@ -5073,6 +5073,8 @@ async function loadAnalyzerChart(){
       l:parseFloat(c.low),
       c:parseFloat(c.close),
     }));
+    // Reset view state for fresh load
+    _azViewState={offset:0,visible:30,yStretch:1.0};
     renderAZChart();
     if(cc)cc.style.display='block';
     if(ac)ac.style.display='block';
@@ -5106,82 +5108,185 @@ function renderAZChart(){
   if(!wrap||!_azCandles.length)return;
   const W=wrap.clientWidth||340;
   const H=240;
-  const PAD={t:20,b:30,l:8,r:48};
+  const PAD={t:20,b:28,l:6,r:50};
   const cW=W-PAD.l-PAD.r;
   const cH=H-PAD.t-PAD.b;
-  const n=_azCandles.length;
+
+  // ── View state: which candles to show ──
+  const totalC=_azCandles.length;
+  const vis=Math.max(5,Math.min(_azViewState.visible,totalC));
+  const off=Math.max(0,Math.min(_azViewState.offset,totalC-vis));
+  const endIdx=totalC-off;
+  const startIdx=Math.max(0,endIdx-vis);
+  const display=_azCandles.slice(startIdx,endIdx);
+  const n=display.length;
+  if(!n)return;
+
   const candleW=Math.max(2,Math.floor(cW/n)-1);
-  const allH=_azCandles.map(c=>c.h),allL=_azCandles.map(c=>c.l);
-  let minP=Math.min(...allL),maxP=Math.max(...allH);
-  const range=maxP-minP||1;
-  // Add 5% padding top and bottom
-  minP-=range*0.05;maxP+=range*0.05;
+
+  // ── Price range with yStretch ──
+  const allH=display.map(c=>c.h),allL=display.map(c=>c.l);
+  const rawMin=Math.min(...allL),rawMax=Math.max(...allH);
+  const rawRange=rawMax-rawMin||1;
+  const center=(rawMax+rawMin)/2;
+  const halfRange=(rawRange/2+rawRange*0.05)/_azViewState.yStretch;
+  let minP=center-halfRange,maxP=center+halfRange;
   const totalRange=maxP-minP;
+
   const yS=v=>PAD.t+cH-(((v-minP)/totalRange)*cH);
   const xS=i=>PAD.l+(i/n)*cW+(candleW/2);
-  // Y-axis price labels
+
+  // ── Y-axis grid + labels ──
+  let yLabels='',yGrids='';
   const priceStep=niceNum(totalRange/4);
   const priceStart=Math.ceil(minP/priceStep)*priceStep;
-  let yLabels='',yGrids='';
   for(let p=priceStart;p<=maxP;p+=priceStep){
     const y=yS(p);
+    if(y<PAD.t||y>H-PAD.b)continue;
     yLabels+=`<text x="${W-PAD.r+4}" y="${(y+3).toFixed(1)}" font-size="8" fill="#2A2A2A" font-family="DM Mono,monospace" text-anchor="start">${p.toFixed(0)}</text>`;
     yGrids+=`<line x1="${PAD.l}" y1="${y.toFixed(1)}" x2="${W-PAD.r}" y2="${y.toFixed(1)}" stroke="#141414" stroke-width="0.7"/>`;
   }
-  // Session background shading
-  let sessionBg='';
-  _azCandles.forEach((c,i)=>{
-    const watH=(c.t.getUTCHours()+1)%24;
-    let bg='';
-    if(watH>=22||watH<2)bg='rgba(100,140,255,.06)';       // Asia
-    else if(watH>=11&&watH<17)bg='rgba(201,168,76,.05)';  // NY
-    if(bg){
-      const x=PAD.l+(i/n)*cW;
-      const bw=Math.ceil(cW/n)+1;
-      sessionBg+=`<rect x="${x.toFixed(1)}" y="${PAD.t}" width="${bw}" height="${cH}" fill="${bg}"/>`;
-    }
-  });
-  // Key levels detection
-  const levels=detectKeyLevels(_azCandles,minP,maxP);
+
+  // ── Key levels ──
+  const levels=detectKeyLevels(display,minP,maxP);
   let levelLines='';
   levels.forEach(lv=>{
     const y=yS(lv.price);
+    if(y<PAD.t||y>H-PAD.b)return;
     levelLines+=`<line x1="${PAD.l}" y1="${y.toFixed(1)}" x2="${W-PAD.r}" y2="${y.toFixed(1)}" stroke="${lv.col}" stroke-width="${lv.w}" stroke-dasharray="${lv.dash}"/>`;
     levelLines+=`<text x="${W-PAD.r+4}" y="${(y-2).toFixed(1)}" font-size="7" fill="${lv.col}" font-family="DM Mono,monospace" text-anchor="start">${lv.label}</text>`;
   });
-  // Candles
+
+  // ── Candles ──
   let candles='';
-  _azCandles.forEach((c,i)=>{
+  display.forEach((c,i)=>{
     const x=xS(i);
     const isBull=c.c>=c.o;
     const col=isBull?'#2DB87C':'#E05252';
     const bodyTop=yS(Math.max(c.o,c.c));
     const bodyBot=yS(Math.min(c.o,c.c));
     const bodyH=Math.max(1,bodyBot-bodyTop);
-    const xL=x-candleW/2;
-    // Wick
     candles+=`<line x1="${x.toFixed(1)}" y1="${yS(c.h).toFixed(1)}" x2="${x.toFixed(1)}" y2="${yS(c.l).toFixed(1)}" stroke="${col}" stroke-width="1"/>`;
-    // Body
-    candles+=`<rect x="${xL.toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${candleW}" height="${bodyH.toFixed(1)}" fill="${col}" rx="0.5"/>`;
+    candles+=`<rect x="${(x-candleW/2).toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${candleW}" height="${bodyH.toFixed(1)}" fill="${col}" rx="0.5"/>`;
   });
-  // X-axis time labels — show ~5 labels
+
+  // ── X-axis time labels ──
   let xLabels='';
-  const labelStep=Math.floor(n/5)||1;
-  _azCandles.forEach((c,i)=>{
+  const labelStep=Math.max(1,Math.floor(n/5));
+  display.forEach((c,i)=>{
     if(i%labelStep!==0&&i!==n-1)return;
-    const x=xS(i);
-    const h=String(c.t.getUTCHours()+1).padStart(2,'0'); // WAT
+    const h=String((c.t.getUTCHours()+1)%24).padStart(2,'0');
     const m=String(c.t.getUTCMinutes()).padStart(2,'0');
-    xLabels+=`<text x="${x.toFixed(1)}" y="${H-8}" font-size="7.5" fill="#222" font-family="DM Mono,monospace" text-anchor="middle">${h}:${m}</text>`;
+    xLabels+=`<text x="${xS(i).toFixed(1)}" y="${H-6}" font-size="7.5" fill="#222" font-family="DM Mono,monospace" text-anchor="middle">${h}:${m}</text>`;
   });
-  // Last price line
-  const lastP=_azCandles[n-1].c;
+
+  // ── Last price dashed line ──
+  const lastP=display[n-1].c;
   const lastY=yS(lastP);
-  const lastCol=_azCandles[n-1].c>=_azCandles[n-1].o?'#2DB87C':'#E05252';
+  const lastCol=display[n-1].c>=display[n-1].o?'#2DB87C':'#E05252';
   const lastLine=`<line x1="${PAD.l}" y1="${lastY.toFixed(1)}" x2="${W-PAD.r}" y2="${lastY.toFixed(1)}" stroke="${lastCol}" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.6"/>`;
-  wrap.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block">${yGrids}${sessionBg}${levelLines}${candles}${lastLine}${yLabels}${xLabels}</svg>`;
-  // Level legend
+
+  // ── Scroll indicator ──
+  const scrollBarW=cW*(vis/totalC);
+  const scrollBarX=PAD.l+cW*((totalC-vis-off)/totalC);
+  const scrollBar=off>0?`<rect x="${scrollBarX.toFixed(1)}" y="${H-5}" width="${scrollBarW.toFixed(1)}" height="3" rx="1.5" fill="#2A2A2A"/>`:'' ;
+
+  // ── Render SVG ──
+  wrap.innerHTML=
+    `<svg id="az-svg" viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block;touch-action:none">`+
+    yGrids+levelLines+candles+lastLine+yLabels+xLabels+scrollBar+
+    `</svg>`+
+    // Chart body overlay — pan left/right
+    `<div id="az-pan-overlay" style="position:absolute;top:0;left:0;right:${PAD.r}px;bottom:${PAD.b}px;cursor:grab"></div>`+
+    // Price axis overlay — y-stretch
+    `<div id="az-yscale-overlay" style="position:absolute;top:0;right:0;width:${PAD.r}px;bottom:${PAD.b}px;cursor:ns-resize"></div>`+
+    // Time axis overlay — x-stretch (zoom)
+    `<div id="az-xscale-overlay" style="position:absolute;bottom:0;left:0;right:${PAD.r}px;height:${PAD.b}px;cursor:ew-resize"></div>`;
+
+  attachAZInteraction();
   renderLevelLegend(levels);
+}
+
+// ── Touch/Mouse interaction ──
+function attachAZInteraction(){
+  const panEl=document.getElementById('az-pan-overlay');
+  const yEl=document.getElementById('az-yscale-overlay');
+  const xEl=document.getElementById('az-xscale-overlay');
+  if(!panEl||!yEl||!xEl)return;
+
+  // Shared state
+  let startX=0,startY=0,startOffset=0,startVisible=0,startYStretch=0;
+
+  function getXY(e){
+    if(e.touches)return{x:e.touches[0].clientX,y:e.touches[0].clientY};
+    return{x:e.clientX,y:e.clientY};
+  }
+
+  // ── PAN (horizontal scroll) ──
+  function panStart(e){
+    e.preventDefault();
+    const {x,y}=getXY(e);
+    startX=x;startOffset=_azViewState.offset;
+    panEl.style.cursor='grabbing';
+  }
+  function panMove(e){
+    e.preventDefault();
+    const {x}=getXY(e);
+    const dx=startX-x; // drag left = positive dx = scroll right (older candles)
+    const wrap=document.getElementById('az-chart-wrap');
+    const W=wrap?wrap.clientWidth:340;
+    const PAD_R=50;const cW=W-6-PAD_R;
+    const pxPerCandle=cW/_azViewState.visible;
+    const candlesDelta=Math.round(dx/pxPerCandle);
+    const newOffset=Math.max(0,Math.min(startOffset+candlesDelta,_azCandles.length-_azViewState.visible));
+    if(newOffset!==_azViewState.offset){_azViewState.offset=newOffset;renderAZChart();}
+  }
+  function panEnd(){panEl.style.cursor='grab';}
+
+  panEl.addEventListener('mousedown',panStart,{passive:false});
+  window.addEventListener('mousemove',function pmm(e){if(e.buttons===1&&document.getElementById('az-pan-overlay'))panMove(e);},{passive:false});
+  window.addEventListener('mouseup',panEnd,{passive:false});
+  panEl.addEventListener('touchstart',panStart,{passive:false});
+  panEl.addEventListener('touchmove',panMove,{passive:false});
+  panEl.addEventListener('touchend',panEnd,{passive:false});
+
+  // ── Y-STRETCH (price scale drag) ──
+  function yStart(e){
+    e.preventDefault();
+    const {y}=getXY(e);
+    startY=y;startYStretch=_azViewState.yStretch;
+  }
+  function yMove(e){
+    e.preventDefault();
+    const {y}=getXY(e);
+    const dy=startY-y; // drag up = positive dy = zoom in (show less range)
+    const factor=1+dy*0.005;
+    const newStretch=Math.max(0.3,Math.min(startYStretch*factor,8));
+    if(Math.abs(newStretch-_azViewState.yStretch)>0.01){_azViewState.yStretch=newStretch;renderAZChart();}
+  }
+  yEl.addEventListener('mousedown',yStart,{passive:false});
+  window.addEventListener('mousemove',function ymm(e){if(e.buttons===1&&document.getElementById('az-yscale-overlay'))yMove(e);},{passive:false});
+  yEl.addEventListener('touchstart',yStart,{passive:false});
+  yEl.addEventListener('touchmove',yMove,{passive:false});
+
+  // ── X-STRETCH (time scale / candle zoom) ──
+  function xStart(e){
+    e.preventDefault();
+    const {x}=getXY(e);
+    startX=x;startVisible=_azViewState.visible;
+  }
+  function xMove(e){
+    e.preventDefault();
+    const {x}=getXY(e);
+    const dx=startX-x; // drag left = zoom in (fewer candles), drag right = zoom out
+    const delta=Math.round(dx*0.15);
+    const newVis=Math.max(5,Math.min(startVisible+delta,_azCandles.length));
+    if(newVis!==_azViewState.visible){_azViewState.visible=newVis;renderAZChart();}
+  }
+  xEl.addEventListener('mousedown',xStart,{passive:false});
+  window.addEventListener('mousemove',function xmm(e){if(e.buttons===1&&document.getElementById('az-xscale-overlay'))xMove(e);},{passive:false});
+  xEl.addEventListener('touchstart',xStart,{passive:false});
+  xEl.addEventListener('touchmove',xMove,{passive:false});
 }
 
 function niceNum(v){
@@ -5254,7 +5359,10 @@ function renderLevelLegend(levels){
 function updatePresessionReadout(){
   const pr=document.getElementById('az-presession-readout');
   if(!pr||!_azCandles.length)return;
-  const candles=_azCandles;
+  // Use visible window
+  const vis=Math.max(5,Math.min(_azViewState.visible,_azCandles.length));
+  const off=Math.max(0,_azViewState.offset);
+  const candles=_azCandles.slice(Math.max(0,_azCandles.length-vis-off),_azCandles.length-off);
   const last=candles[candles.length-1];
   const now=new Date();
   const watH=((now.getUTCHours()+1)%24);
