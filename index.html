@@ -1157,7 +1157,7 @@ const AUTH_URL=SB_URL+'/auth/v1';
 const TD_KEY='69cac9ece41641fbae1a9813ed1fafe3';
 const TD_URL='https://api.twelvedata.com';
 const GEMINI_KEY='AIzaSyB2wbOaVgdA-cFgar39jQIxAtyOeuo2Wqw';
-const GEMINI_URL='https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
+const GEMINI_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
 const STORAGE_URL=SB_URL+'/storage/v1';
 
 // Session stored in localStorage
@@ -4991,7 +4991,8 @@ window.saveQuickTrade=async function(){
 let _azTF='1h';
 let _azCandles=[];
 let _azLoading=false;
-let _azViewState={offset:0,visible:30,yStretch:1.0}; // offset=candles from right scrolled off, visible=candles shown, yStretch=vertical zoom
+let _azViewState={offset:0,visible:50,yStretch:1.0};
+let _azRafPending=false; // RAF throttle for smooth rendering
 
 // WAT = UTC+1. Session windows in WAT hours (24h)
 const AZ_SESSIONS={
@@ -5056,7 +5057,7 @@ async function loadAnalyzerChart(){
   const wrap=document.getElementById('az-chart-wrap');
   if(wrap)wrap.innerHTML='<div class="az-chart-loading">Fetching real candles...</div>';
   try{
-    const outputsize=100; // always fetch 100 — display 30 initially, rest available for scrolling
+    const outputsize=300; // fetch 300 — show 50 initially, 250 available to scroll into
     const url=`${TD_URL}/time_series?symbol=XAU%2FUSD&interval=${_azTF}&outputsize=${outputsize}&apikey=${TD_KEY}`;
     const r=await fetch(url);
     const d=await r.json();
@@ -5074,7 +5075,7 @@ async function loadAnalyzerChart(){
       c:parseFloat(c.close),
     }));
     // Reset view state for fresh load
-    _azViewState={offset:0,visible:30,yStretch:1.0};
+    _azViewState={offset:0,visible:50,yStretch:1.0};
     renderAZChart();
     if(cc)cc.style.display='block';
     if(ac)ac.style.display='block';
@@ -5222,24 +5223,32 @@ function attachAZInteraction(){
     return{x:e.clientX,y:e.clientY};
   }
 
+  // RAF throttle — smooth rendering, prevents laggy redraws on every pixel
+  function scheduleRender(){
+    if(!_azRafPending){
+      _azRafPending=true;
+      requestAnimationFrame(()=>{renderAZChart();_azRafPending=false;});
+    }
+  }
+
   // ── PAN (horizontal scroll) ──
   function panStart(e){
     e.preventDefault();
-    const {x,y}=getXY(e);
+    const {x}=getXY(e);
     startX=x;startOffset=_azViewState.offset;
     panEl.style.cursor='grabbing';
   }
   function panMove(e){
     e.preventDefault();
     const {x}=getXY(e);
-    const dx=startX-x; // drag left = positive dx = scroll right (older candles)
+    // Drag RIGHT → older candles (positive offset). Natural map-style scrolling.
+    const dx=x-startX;
     const wrap=document.getElementById('az-chart-wrap');
     const W=wrap?wrap.clientWidth:340;
-    const PAD_R=50;const cW=W-6-PAD_R;
-    const pxPerCandle=cW/_azViewState.visible;
+    const pxPerCandle=(W-6-50)/Math.max(1,_azViewState.visible);
     const candlesDelta=Math.round(dx/pxPerCandle);
     const newOffset=Math.max(0,Math.min(startOffset+candlesDelta,_azCandles.length-_azViewState.visible));
-    if(newOffset!==_azViewState.offset){_azViewState.offset=newOffset;renderAZChart();}
+    if(newOffset!==_azViewState.offset){_azViewState.offset=newOffset;scheduleRender();}
   }
   function panEnd(){panEl.style.cursor='grab';}
 
@@ -5259,10 +5268,10 @@ function attachAZInteraction(){
   function yMove(e){
     e.preventDefault();
     const {y}=getXY(e);
-    const dy=startY-y; // drag up = positive dy = zoom in (show less range)
+    const dy=startY-y;
     const factor=1+dy*0.005;
     const newStretch=Math.max(0.3,Math.min(startYStretch*factor,8));
-    if(Math.abs(newStretch-_azViewState.yStretch)>0.01){_azViewState.yStretch=newStretch;renderAZChart();}
+    if(Math.abs(newStretch-_azViewState.yStretch)>0.01){_azViewState.yStretch=newStretch;scheduleRender();}
   }
   yEl.addEventListener('mousedown',yStart,{passive:false});
   window.addEventListener('mousemove',function ymm(e){if(e.buttons===1&&document.getElementById('az-yscale-overlay'))yMove(e);},{passive:false});
@@ -5278,10 +5287,11 @@ function attachAZInteraction(){
   function xMove(e){
     e.preventDefault();
     const {x}=getXY(e);
-    const dx=startX-x; // drag left = zoom in (fewer candles), drag right = zoom out
+    // Drag left = see more candles (zoom out). Drag right = fewer candles (zoom in).
+    const dx=startX-x;
     const delta=Math.round(dx*0.15);
     const newVis=Math.max(5,Math.min(startVisible+delta,_azCandles.length));
-    if(newVis!==_azViewState.visible){_azViewState.visible=newVis;renderAZChart();}
+    if(newVis!==_azViewState.visible){_azViewState.visible=newVis;scheduleRender();}
   }
   xEl.addEventListener('mousedown',xStart,{passive:false});
   window.addEventListener('mousemove',function xmm(e){if(e.buttons===1&&document.getElementById('az-xscale-overlay'))xMove(e);},{passive:false});
