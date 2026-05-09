@@ -5583,13 +5583,20 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
       btn.disabled=false;btn.textContent='↻ Re-Analyze';return;
     }
     const apiData=await apiResp.json();
-    const raw=(apiData.candidates&&apiData.candidates[0]&&apiData.candidates[0].content&&apiData.candidates[0].content.parts&&apiData.candidates[0].content.parts[0]&&apiData.candidates[0].content.parts[0].text)||'';
+    // gemini-2.5-flash uses thinking mode — parts may include a {thought:true} chunk before the real text
+    // Filter it out and take only the actual response part
+    const parts=(apiData.candidates&&apiData.candidates[0]&&apiData.candidates[0].content&&apiData.candidates[0].content.parts)||[];
+    const textPart=parts.find(p=>!p.thought&&typeof p.text==='string')||parts[parts.length-1]||{};
+    const raw=textPart.text||'';
 
-    // Parse JSON — model may occasionally wrap in backticks
+    // Robustly extract JSON — strip backticks, then find the outermost { } block
     let parsed;
     try{
-      const clean=raw.replace(/```json|```/g,'').trim();
-      parsed=JSON.parse(clean);
+      let jsonStr=raw.replace(/```json|```/g,'').trim();
+      const start=jsonStr.indexOf('{');
+      const end=jsonStr.lastIndexOf('}');
+      if(start!==-1&&end!==-1&&end>start)jsonStr=jsonStr.slice(start,end+1);
+      parsed=JSON.parse(jsonStr);
     }catch(e){
       out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">Analysis returned unexpected format. Try again.</div>';
       btn.disabled=false;btn.textContent='↻ Re-Analyze';return;
