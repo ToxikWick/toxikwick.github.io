@@ -192,6 +192,12 @@ select option{background:#181818;color:#E2DDD6}
 .az-dot:nth-child(3){animation-delay:.4s}
 @keyframes azPulse{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
 
+/* API KEY SETUP */
+.az-key-setup{background:#0A0A0A;border:1px solid rgba(201,168,76,.15);border-radius:8px;padding:18px 16px;text-align:center}
+.az-key-input{width:100%;background:#111;border:1px solid rgba(201,168,76,.25);border-radius:6px;padding:10px 12px;color:#E2DDD6;font-size:13px;font-family:'DM Mono',monospace;outline:none;margin:10px 0;box-sizing:border-box;letter-spacing:.04em}
+.az-key-input:focus{border-color:rgba(201,168,76,.55)}
+.az-key-input::placeholder{color:#2A2A2A;letter-spacing:0}
+
 /* RULE CHECK (log form) */
 .rc-hdr{display:flex;align-items:center;justify-content:space-between;padding:9px 11px;background:#0D0D0D;border:1px solid #1C1C1C;border-radius:7px;cursor:pointer;margin-bottom:0;transition:border-color .2s}
 .rc-hdr.open{border-radius:7px 7px 0 0;border-color:rgba(201,168,76,.2)}
@@ -983,7 +989,10 @@ select option{background:#181818;color:#E2DDD6}
         <div style="font-size:15px;font-weight:700;margin-bottom:2px">🔬 ToxikWick Analyzer</div>
         <div style="font-size:10px;color:#444;font-family:'DM Mono',monospace">Real-time XAUUSD · SMC Confluence Check</div>
       </div>
-      <div id="az-session-indicator" style="font-size:9px;font-family:'DM Mono',monospace;text-align:right"></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+        <div id="az-session-indicator" style="font-size:9px;font-family:'DM Mono',monospace;text-align:right"></div>
+        <button onclick="azPromptChangeKey()" style="font-size:9px;color:#444;background:none;border:1px solid #1C1C1C;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;white-space:nowrap">🔑 Key</button>
+      </div>
     </div>
 
     <!-- Pre-Session Quick Check -->
@@ -1156,8 +1165,8 @@ const SB_KEY='sb_publishable_l4PTYKlCiPoVGkQZj0loWQ_JMHGkGd3';
 const AUTH_URL=SB_URL+'/auth/v1';
 const TD_KEY='69cac9ece41641fbae1a9813ed1fafe3';
 const TD_URL='https://api.twelvedata.com';
-const GEMINI_KEY='AIzaSyB2wbOaVgdA-cFgar39jQIxAtyOeuo2Wqw';
-const GEMINI_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
+// Gemini API key — stored in localStorage by user; never hardcoded in source
+const GEMINI_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 const STORAGE_URL=SB_URL+'/storage/v1';
 
 // Session stored in localStorage
@@ -5412,8 +5421,79 @@ function updatePresessionReadout(){
     `</div>`;
 }
 
+// ── Gemini Key Management ──────────────────────────────────────────────────────
+function getGeminiKey(){try{return localStorage.getItem('tw_gemini_key')||'';}catch(e){return '';}}
+function _saveGeminiKey(k){try{localStorage.setItem('tw_gemini_key',k);}catch(e){}}
+function _clearGeminiKey(){try{localStorage.removeItem('tw_gemini_key');}catch(e){}}
+
+function azShowKeySetup(isChange){
+  const card=document.getElementById('az-analysis-card');
+  const out=document.getElementById('az-analysis-output');
+  const btn=document.getElementById('az-analyze-btn');
+  if(!card||!out)return;
+  card.style.display='';
+  if(btn)btn.style.display='none';
+  out.innerHTML=
+    `<div class="az-key-setup">`+
+      `<div style="font-size:24px;margin-bottom:10px">🔑</div>`+
+      `<div style="font-size:13px;font-weight:700;color:#E2DDD6;margin-bottom:5px">`+
+        (isChange?'Update Gemini API Key':'Set Your Gemini API Key')+
+      `</div>`+
+      `<div style="font-size:10px;color:#555;font-family:'DM Mono',monospace;line-height:1.7;margin-bottom:4px">`+
+        `Stored on this device only.<br>Never saved in your source code.`+
+      `</div>`+
+      `<input class="az-key-input" id="az-key-input" type="password" placeholder="Paste your AIzaSy… key here" autocomplete="off" onkeydown="if(event.key==='Enter')azSaveKey()">`+
+      `<div id="az-key-err" style="font-size:10px;color:#E05252;font-family:'DM Mono',monospace;min-height:14px;margin-bottom:6px"></div>`+
+      `<div style="display:flex;gap:7px">`+
+        `<button class="az-btn az-btn-primary" style="flex:1;padding:10px" onclick="azSaveKey()">Save & Activate</button>`+
+        (isChange?`<button class="az-btn az-btn-ghost" onclick="azCancelKeyChange()">Cancel</button>`:'')+
+      `</div>`+
+      `<div style="margin-top:12px;font-size:9px;color:#2A2A2A;font-family:'DM Mono',monospace">`+
+        `Free key at <span style="color:#C9A84C">aistudio.google.com</span>`+
+      `</div>`+
+    `</div>`;
+  setTimeout(()=>{const i=document.getElementById('az-key-input');if(i)i.focus();},80);
+}
+
+function azSaveKey(){
+  const inp=document.getElementById('az-key-input');
+  const errEl=document.getElementById('az-key-err');
+  if(!inp)return;
+  const k=inp.value.trim();
+  if(!k){if(errEl)errEl.textContent='Key cannot be empty.';return;}
+  if(!k.startsWith('AIza')||k.length<35){
+    if(errEl)errEl.textContent='Invalid key — should start with AIza and be 39+ chars.';
+    inp.style.borderColor='rgba(224,82,82,.45)';
+    return;
+  }
+  _saveGeminiKey(k);
+  const btn=document.getElementById('az-analyze-btn');
+  if(btn)btn.style.display='';
+  const out=document.getElementById('az-analysis-output');
+  if(out)out.innerHTML=
+    `<div style="font-size:11px;color:#2DB87C;font-family:'DM Mono',monospace;text-align:center;padding:14px 0">`+
+    `✓ Key saved. Tap <strong>Run Analysis</strong> to check confluences.</div>`;
+  flash('ok','Gemini key saved to this device.');
+}
+
+function azPromptChangeKey(){
+  azShowKeySetup(true);
+}
+
+function azCancelKeyChange(){
+  const btn=document.getElementById('az-analyze-btn');
+  if(btn)btn.style.display='';
+  const out=document.getElementById('az-analysis-output');
+  if(out)out.innerHTML=
+    `<div style="font-size:11px;color:#333;font-family:'DM Mono',monospace;text-align:center;padding:16px 0">`+
+    `Tap Run Analysis to check confluences on the loaded candles</div>`;
+}
+// ── END Key Management ─────────────────────────────────────────────────────────
+
 // ── AI Confluence Analysis ──
 async function runAIAnalysis(){
+  const GKEY=getGeminiKey();
+  if(!GKEY){azShowKeySetup(false);return;}
   if(!_azCandles.length){flash('err','Load a chart first.');return;}
   const btn=document.getElementById('az-analyze-btn');
   const out=document.getElementById('az-analysis-output');
@@ -5473,8 +5553,8 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
   "missing": "what needs to happen for a higher grade setup"
 }`;
   try{
-    // Direct REST fetch — no SDK, no version conflicts, works with all Gemini models
-    const apiUrl=`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${GEMINI_KEY}`;
+    // Direct REST fetch — no SDK dependency, no version conflicts
+    const apiUrl=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GKEY}`;
     let apiResp;
     try{
       apiResp=await fetch(apiUrl,{
@@ -5492,7 +5572,14 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
     if(!apiResp.ok){
       const errData=await apiResp.json().catch(()=>({}));
       const errMsg=(errData.error&&errData.error.message)||`API error ${apiResp.status}`;
-      out.innerHTML=`<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">${errMsg}</div>`;
+      // If key is bad, prompt user to update it
+      if(apiResp.status===400||apiResp.status===401||apiResp.status===403){
+        out.innerHTML=
+          `<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:6px 0 10px">${errMsg}</div>`+
+          `<button class="az-btn az-btn-ghost" style="width:100%;margin-top:4px" onclick="azPromptChangeKey()">🔑 Update API Key</button>`;
+      }else{
+        out.innerHTML=`<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">${errMsg}</div>`;
+      }
       btn.disabled=false;btn.textContent='↻ Re-Analyze';return;
     }
     const apiData=await apiResp.json();
@@ -5576,6 +5663,12 @@ function renderAnalysisResult(r){
 function initAnalyzer(){
   azUpdateClock();
   if(!window._azClockInterval)window._azClockInterval=setInterval(azUpdateClock,30000);
+  // If no Gemini key saved yet, show the key setup panel immediately
+  if(!getGeminiKey()){
+    const card=document.getElementById('az-analysis-card');
+    if(card)card.style.display='';
+    azShowKeySetup(false);
+  }
 }
 // ── END ANALYZER ──────────────────────────────────────────────────────────────
 
