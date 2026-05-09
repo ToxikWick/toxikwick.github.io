@@ -1157,7 +1157,7 @@ const AUTH_URL=SB_URL+'/auth/v1';
 const TD_KEY='69cac9ece41641fbae1a9813ed1fafe3';
 const TD_URL='https://api.twelvedata.com';
 const GEMINI_KEY='AIzaSyB2wbOaVgdA-cFgar39jQIxAtyOeuo2Wqw';
-const GEMINI_URL='https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-001:generateContent';
+const GEMINI_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
 const STORAGE_URL=SB_URL+'/storage/v1';
 
 // Session stored in localStorage
@@ -5473,25 +5473,30 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
   "missing": "what needs to happen for a higher grade setup"
 }`;
   try{
-    // Load Google Generative AI SDK on demand via dynamic import — no CDN needed at page load
-    let GoogleGenerativeAI;
+    // Direct REST fetch — no SDK, no version conflicts, works with all Gemini models
+    const apiUrl=`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${GEMINI_KEY}`;
+    let apiResp;
     try{
-      const sdk=await import('https://esm.run/@google/generative-ai');
-      GoogleGenerativeAI=sdk.GoogleGenerativeAI;
+      apiResp=await fetch(apiUrl,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          contents:[{parts:[{text:prompt}]}],
+          generationConfig:{temperature:0.1,maxOutputTokens:1024}
+        })
+      });
     }catch(e){
-      out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">Could not load AI SDK. Check connection and try again.</div>';
-      btn.disabled=false;btn.textContent='Run Analysis';return;
+      out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">Network error. Check your connection and try again.</div>';
+      btn.disabled=false;btn.textContent='↻ Re-Analyze';return;
     }
-
-    // Initialise with API key — pinned to v1 to avoid v1beta 404s
-    const genAI=new GoogleGenerativeAI(GEMINI_KEY);
-    const model=genAI.getGenerativeModel(
-      {model:'gemini-1.5-flash-001',generationConfig:{temperature:0.1,maxOutputTokens:1024}},
-      {apiVersion:'v1'}
-    );
-
-    const result=await model.generateContent(prompt);
-    const raw=result.response.text();
+    if(!apiResp.ok){
+      const errData=await apiResp.json().catch(()=>({}));
+      const errMsg=(errData.error&&errData.error.message)||`API error ${apiResp.status}`;
+      out.innerHTML=`<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">${errMsg}</div>`;
+      btn.disabled=false;btn.textContent='↻ Re-Analyze';return;
+    }
+    const apiData=await apiResp.json();
+    const raw=(apiData.candidates&&apiData.candidates[0]&&apiData.candidates[0].content&&apiData.candidates[0].content.parts&&apiData.candidates[0].content.parts[0]&&apiData.candidates[0].content.parts[0].text)||'';
 
     // Parse JSON — model may occasionally wrap in backticks
     let parsed;
@@ -5500,12 +5505,12 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
       parsed=JSON.parse(clean);
     }catch(e){
       out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">Analysis returned unexpected format. Try again.</div>';
-      btn.disabled=false;btn.textContent='Run Analysis';return;
+      btn.disabled=false;btn.textContent='↻ Re-Analyze';return;
     }
     renderAnalysisResult(parsed);
   }catch(e){
     const msg=e.message||'';
-    out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">'+(msg||'Network error. Check connection and try again.')+'</div>';
+    out.innerHTML=`<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">${msg||'Unexpected error. Try again.'}</div>`;
   }
   btn.disabled=false;btn.textContent='↻ Re-Analyze';
 }
