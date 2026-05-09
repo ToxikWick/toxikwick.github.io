@@ -5473,38 +5473,40 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
   "missing": "what needs to happen for a higher grade setup"
 }`;
   try{
-    // Gemini 1.5 Flash REST API — no server needed, works from browser
-    const resp=await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        contents:[{parts:[{text:prompt}]}],
-        generationConfig:{
-          temperature:0.1,
-          maxOutputTokens:1024
-        }
-      })
-    });
-    const data=await resp.json();
-    // Gemini response structure: data.candidates[0].content.parts[0].text
-    if(!resp.ok||!data.candidates||!data.candidates.length){
-      const errMsg=data.error?.message||'Gemini API error. Check key or try again.';
-      out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">'+errMsg+'</div>';
+    // Load Google Generative AI SDK on demand via dynamic import — no CDN needed at page load
+    let GoogleGenerativeAI;
+    try{
+      const sdk=await import('https://esm.run/@google/generative-ai');
+      GoogleGenerativeAI=sdk.GoogleGenerativeAI;
+    }catch(e){
+      out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">Could not load AI SDK. Check connection and try again.</div>';
       btn.disabled=false;btn.textContent='Run Analysis';return;
     }
-    const raw=data.candidates[0].content.parts[0].text||'';
-    // Parse JSON — Gemini may still wrap in backticks occasionally
-    let result;
+
+    // Initialise with API key
+    const genAI=new GoogleGenerativeAI(GEMINI_KEY);
+    // gemini-pro is universally enabled for all Google AI Studio keys
+    const model=genAI.getGenerativeModel({
+      model:'gemini-pro',
+      generationConfig:{temperature:0.1,maxOutputTokens:1024}
+    });
+
+    const result=await model.generateContent(prompt);
+    const raw=result.response.text();
+
+    // Parse JSON — model may occasionally wrap in backticks
+    let parsed;
     try{
       const clean=raw.replace(/```json|```/g,'').trim();
-      result=JSON.parse(clean);
+      parsed=JSON.parse(clean);
     }catch(e){
       out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">Analysis returned unexpected format. Try again.</div>';
       btn.disabled=false;btn.textContent='Run Analysis';return;
     }
-    renderAnalysisResult(result);
+    renderAnalysisResult(parsed);
   }catch(e){
-    out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">Network error. Check connection and try again.</div>';
+    const msg=e.message||'';
+    out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">'+(msg||'Network error. Check connection and try again.')+'</div>';
   }
   btn.disabled=false;btn.textContent='↻ Re-Analyze';
 }
