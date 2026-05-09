@@ -1157,7 +1157,7 @@ const AUTH_URL=SB_URL+'/auth/v1';
 const TD_KEY='69cac9ece41641fbae1a9813ed1fafe3';
 const TD_URL='https://api.twelvedata.com';
 const GEMINI_KEY='AIzaSyB2wbOaVgdA-cFgar39jQIxAtyOeuo2Wqw';
-const GEMINI_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
+const GEMINI_URL='https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-001:generateContent';
 const STORAGE_URL=SB_URL+'/storage/v1';
 
 // Session stored in localStorage
@@ -5483,13 +5483,12 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
       btn.disabled=false;btn.textContent='Run Analysis';return;
     }
 
-    // Initialise with API key
+    // Initialise with API key — pinned to v1 to avoid v1beta 404s
     const genAI=new GoogleGenerativeAI(GEMINI_KEY);
-    // gemini-pro is universally enabled for all Google AI Studio keys
-    const model=genAI.getGenerativeModel({
-      model:'gemini-pro',
-      generationConfig:{temperature:0.1,maxOutputTokens:1024}
-    });
+    const model=genAI.getGenerativeModel(
+      {model:'gemini-1.5-flash-001',generationConfig:{temperature:0.1,maxOutputTokens:1024}},
+      {apiVersion:'v1'}
+    );
 
     const result=await model.generateContent(prompt);
     const raw=result.response.text();
