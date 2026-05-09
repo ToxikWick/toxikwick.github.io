@@ -172,9 +172,11 @@ select option{background:#181818;color:#E2DDD6}
 .az-tf-btn.on{background:rgba(201,168,76,.08);border-color:rgba(201,168,76,.3);color:#C9A84C}
 .az-chart-wrap{background:#080808;border:1px solid #181818;border-radius:7px;overflow:hidden;margin-bottom:10px;position:relative;min-height:200px}
 .az-chart-loading{display:flex;align-items:center;justify-content:center;height:200px;color:#2A2A2A;font-size:11px;font-family:'DM Mono',monospace}
-.az-conf-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #141414}
+.az-conf-row{display:flex;flex-direction:column;gap:3px;padding:9px 0;border-bottom:1px solid #141414}
 .az-conf-row:last-child{border-bottom:none}
-.az-conf-label{font-size:11px;color:#666}
+.az-conf-row-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.az-conf-label{font-size:11px;color:#888;font-weight:600}
+.az-conf-detail{font-size:10px;color:#444;font-family:'DM Mono',monospace;line-height:1.5}
 .az-conf-val{font-size:10px;font-family:'DM Mono',monospace;font-weight:700}
 .az-grade{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;font-size:15px;font-weight:800;font-family:'DM Mono',monospace}
 .az-grade-A{background:rgba(45,184,124,.12);color:#2DB87C;border:2px solid rgba(45,184,124,.3)}
@@ -5630,11 +5632,11 @@ function renderAnalysisResult(r){
     const col=present?'#2DB87C':'#E05252';
     const ico=present?'✓':'✗';
     return`<div class="az-conf-row">`+
-      `<div class="az-conf-label">${confNames[key]||key}</div>`+
-      `<div style="display:flex;align-items:flex-start;gap:8px;flex:1;justify-content:flex-end;max-width:65%;text-align:right">`+
-        `<div style="font-size:9px;color:#444;font-family:DM Mono,monospace;line-height:1.4">${val.detail||''}</div>`+
-        `<div style="font-size:13px;font-weight:700;color:${col};flex-shrink:0">${ico}</div>`+
+      `<div class="az-conf-row-top">`+
+        `<div class="az-conf-label">${confNames[key]||key}</div>`+
+        `<div style="font-size:13px;font-weight:700;color:${col};flex-shrink:0;line-height:1">${ico}</div>`+
       `</div>`+
+      (val.detail?`<div class="az-conf-detail">${val.detail}</div>`:'')+
     `</div>`;
   }).join('');
   const metCount=Object.values(r.confluences||{}).filter(v=>v.present).length;
