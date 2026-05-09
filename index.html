@@ -5562,7 +5562,12 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
           contents:[{parts:[{text:prompt}]}],
-          generationConfig:{temperature:0.1,maxOutputTokens:1024}
+          generationConfig:{
+            temperature:0.1,
+            maxOutputTokens:1024,
+            responseMimeType:'application/json',   // forces clean JSON output — no markdown wrapping
+            thinkingConfig:{thinkingBudget:0}      // disables thinking mode — no thought parts in response
+          }
         })
       });
     }catch(e){
@@ -5583,19 +5588,17 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
       btn.disabled=false;btn.textContent='↻ Re-Analyze';return;
     }
     const apiData=await apiResp.json();
-    // gemini-2.5-flash uses thinking mode — parts may include a {thought:true} chunk before the real text
-    // Filter it out and take only the actual response part
+    // With responseMimeType=application/json and thinking disabled, parts[0].text is clean JSON
     const parts=(apiData.candidates&&apiData.candidates[0]&&apiData.candidates[0].content&&apiData.candidates[0].content.parts)||[];
-    const textPart=parts.find(p=>!p.thought&&typeof p.text==='string')||parts[parts.length-1]||{};
-    const raw=textPart.text||'';
+    const raw=(parts.find(p=>!p.thought&&typeof p.text==='string')||parts[0]||{}).text||'';
 
-    // Robustly extract JSON — strip backticks, then find the outermost { } block
+    // Parse — still guard with { } extraction in case of any edge wrapping
     let parsed;
     try{
-      let jsonStr=raw.replace(/```json|```/g,'').trim();
+      let jsonStr=raw.trim();
       const start=jsonStr.indexOf('{');
       const end=jsonStr.lastIndexOf('}');
-      if(start!==-1&&end!==-1&&end>start)jsonStr=jsonStr.slice(start,end+1);
+      if(start!==-1&&end>start)jsonStr=jsonStr.slice(start,end+1);
       parsed=JSON.parse(jsonStr);
     }catch(e){
       out.innerHTML='<div style="font-size:11px;color:#E05252;font-family:DM Mono,monospace;padding:10px 0">Analysis returned unexpected format. Try again.</div>';
