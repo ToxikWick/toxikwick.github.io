@@ -5068,7 +5068,7 @@ async function loadAnalyzerChart(){
   const wrap=document.getElementById('az-chart-wrap');
   if(wrap)wrap.innerHTML='<div class="az-chart-loading">Fetching real candles...</div>';
   try{
-    const outputsize=300; // fetch 300 — show 50 initially, 250 available to scroll into
+    const outputsize=600; // fetch 600 — show 100 initially, 500 available to scroll into
     const url=`${TD_URL}/time_series?symbol=XAU%2FUSD&interval=${_azTF}&outputsize=${outputsize}&apikey=${TD_KEY}`;
     const r=await fetch(url);
     const d=await r.json();
@@ -5078,15 +5078,16 @@ async function loadAnalyzerChart(){
       return;
     }
     // Twelve Data returns newest first — reverse to oldest first
+    // Filter out weekend candles (Saturday=6, Sunday=0) — flat/dead candles with no institutional activity
     _azCandles=[...d.values].reverse().map(c=>({
       t:new Date(c.datetime),
       o:parseFloat(c.open),
       h:parseFloat(c.high),
       l:parseFloat(c.low),
       c:parseFloat(c.close),
-    }));
-    // Reset view state for fresh load
-    _azViewState={offset:0,visible:50,yStretch:1.0};
+    })).filter(c=>{const day=c.t.getDay();return day!==0&&day!==6;});
+    // Reset view state for fresh load — show last 100, 500 available to scroll left
+    _azViewState={offset:0,visible:100,yStretch:1.0};
     renderAZChart();
     if(cc)cc.style.display='block';
     if(ac)ac.style.display='block';
