@@ -578,7 +578,7 @@ select option{background:#181818;color:#E2DDD6}
         <div class="fg">
           <div class="fld"><label>Date</label><input type="date" id="f-date"></div>
           <div class="fld"><label>Session</label><select id="f-sess"><option>NY</option><option>Asia</option></select></div>
-          <div class="fld"><label>Timeframe</label><select id="f-tf"><option>5M</option><option>15M</option></select></div>
+          <div class="fld"><label>Timeframe</label><select id="f-tf"><option>5M</option><option>15M</option><option>1H</option></select></div>
           <div class="fld"><label>Direction</label><select id="f-dir" onchange="autoCalc()"><option>Long</option><option>Short</option></select></div>
         </div>
         <div class="divider"></div>
@@ -771,7 +771,7 @@ select option{background:#181818;color:#E2DDD6}
 
         <div class="divider"></div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
-          <span class="slabel" style="margin-bottom:0">SMC Checklist</span>
+          <span class="slabel" style="margin-bottom:0">ToxikWick Checklist</span>
           <span id="conf-score" style="font-size:11px;color:#C9A84C;font-family:'DM Mono',monospace;font-weight:700">0/7</span>
         </div>
         <div class="cgrid" id="cgrid"></div>
@@ -925,7 +925,7 @@ select option{background:#181818;color:#E2DDD6}
         <div class="card"><div class="sec-title">By Timeframe</div><div id="a-tfs">—</div></div>
       </div>
       <div class="card">
-        <div class="sec-title">SMC Confluence Impact</div>
+        <div class="sec-title">Algo Confluence Impact</div>
         <div id="a-conf">—</div>
       </div>
       <div class="card" style="margin-top:7px">
@@ -989,7 +989,7 @@ select option{background:#181818;color:#E2DDD6}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
       <div>
         <div style="font-size:15px;font-weight:700;margin-bottom:2px">🔬 ToxikWick Analyzer</div>
-        <div style="font-size:10px;color:#444;font-family:'DM Mono',monospace">Real-time XAUUSD · SMC Confluence Check</div>
+        <div style="font-size:10px;color:#444;font-family:'DM Mono',monospace">Real-time XAUUSD · Institutional Algorithm Analysis</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
         <div id="az-session-indicator" style="font-size:9px;font-family:'DM Mono',monospace;text-align:right"></div>
@@ -1010,6 +1010,7 @@ select option{background:#181818;color:#E2DDD6}
     <div class="az-card">
       <div class="az-hdr">Chart Timeframe</div>
       <div class="az-tf-btns">
+        <button class="az-tf-btn" data-tf="4h" onclick="selectTF(this)">4H · Macro</button>
         <button class="az-tf-btn on" data-tf="1h" onclick="selectTF(this)">1H · HTF</button>
         <button class="az-tf-btn" data-tf="15min" onclick="selectTF(this)">15M · Entry</button>
         <button class="az-tf-btn" data-tf="5min" onclick="selectTF(this)">5M · Precision</button>
@@ -1074,7 +1075,7 @@ select option{background:#181818;color:#E2DDD6}
     </div>
     <div class="fld" style="margin-bottom:10px">
       <label>Weekly Narrative</label>
-      <textarea id="bias-narrative" rows="3" placeholder="What is smart money doing? What are you watching? What's your plan for the week..."></textarea>
+      <textarea id="bias-narrative" rows="3" placeholder="What is the algorithm doing? What liquidity zones are you watching? What's your plan for the week..."></textarea>
     </div>
     <div style="margin-bottom:14px">
       <label style="font-size:10px;color:#666;letter-spacing:.08em;text-transform:uppercase;font-family:'DM Mono',monospace;display:block;margin-bottom:6px">Weekly Chart (optional)</label>
@@ -1428,9 +1429,9 @@ let CU=null,CP=null,trades=[],archivePeriods=[],weeklyBiasData=[],propChallenge=
 let _statsF=[];
 let dPer='today',hPer='daily',aPer='month';
 
-// === SMC CONFLUENCE CHECKLIST CONFIG ===
-const CKEYS=['smc_presence','liquidity_sweep','sr_level','round_number','rejection_candle','continuation_candle','entry_sl_set'];
-const CLBLS=['Smart Money Presence','Liquidity Sweep','S/R Level','Round Number','Rejection Candle Closed','Continuation Candle Close','Entry & SL Set'];
+// === TOXIKWICK ALGO CHECKLIST CONFIG ===
+const CKEYS=['inst_displacement','liquidity_sweep','sr_level','round_number','rejection_candle','continuation_candle','entry_sl_set'];
+const CLBLS=['Institutional Displacement','Liquidity Sweep','S/R Level','Round Number','Rejection Candle Closed','Continuation Candle Close','Entry & SL Set'];
 
 // ============================================================
 // === UI: SCREENS, NAVIGATION & USER MENU ===
@@ -2187,7 +2188,7 @@ async function saveTrade(){
     confluence_score:score,
     liquidity_zone:cv.liquidity_sweep,
     round_number:cv.round_number,
-    sweep_completed:cv.smc_presence,
+    sweep_completed:cv.inst_displacement,
     rejection_candle:cv.rejection_candle,
     session_alignment:cv.sr_level,
   };
@@ -5033,11 +5034,9 @@ function azUpdateClock(){
   if(si)si.innerHTML='<span style="font-size:9px;padding:3px 8px;border-radius:3px;background:'+sessCol+'18;color:'+sessCol+';border:1px solid '+sessCol+'33;font-family:DM Mono,monospace">'+sessName+'</span>';
   // Pre-session readout if no candles loaded yet
   if(!_azCandles.length&&pr){
-    const tip=watH>=22||watH<2?'Asia session active — load 15M chart for entry confirmation':
-      watH>=11&&watH<17?'NY session active — load 15M chart for entry confirmation':
-      watH===10?'Asia pre-session — load 1H chart now to mark HTF structure':
-      watH===11?'NY pre-session — load 1H chart now to mark HTF structure':
-      'Outside session hours — use this time to review HTF structure';
+    const tip=watH>=22||watH<2?'Asia session active — mark liquidity zones on 4H/1H, wait for sweep on 15M':
+      watH>=11&&watH<17?'NY session active — mark liquidity zones on 4H/1H, wait for sweep on 15M':
+      'Outside session hours — review 4H structure and mark key liquidity zones';
     pr.textContent=tip;
   }
 }
@@ -5104,7 +5103,7 @@ async function loadAnalyzerChart(){
       pd.innerHTML='<span style="color:'+priceCol+'">'+last.c.toFixed(2)+'</span> <span style="font-size:9px;color:'+priceCol+';margin-left:4px">'+(chg>=0?'+':'')+chg.toFixed(2)+'</span>';
     }
     const ct=document.getElementById('az-chart-title');
-    const tfLbl={'1h':'1H HTF','15min':'15M Entry','5min':'5M Precision'}[_azTF]||_azTF;
+    const tfLbl={'4h':'4H Macro','1h':'1H HTF','15min':'15M Entry','5min':'5M Precision'}[_azTF]||_azTF;
     if(ct)ct.textContent='XAU/USD · '+tfLbl;
     // Pre-session readout update
     updatePresessionReadout();
@@ -5320,44 +5319,96 @@ function niceNum(v){
 function detectKeyLevels(candles,minP,maxP){
   const levels=[];
   const last=candles[candles.length-1].c;
-  // Round numbers — every $50 near current price
-  const rndBase=Math.round(last/50)*50;
-  for(let r=rndBase-150;r<=rndBase+150;r+=50){
-    if(r>minP&&r<maxP){
-      const dist=Math.abs(r-last);
-      levels.push({price:r,label:'$'+r,col:'rgba(201,168,76,.4)',w:0.8,dash:'4,3',type:'round'});
-    }
+
+  // === ROUND NUMBERS — Tiered system ===
+  // Thousands (e.g. 3000, 4000) — strongest, brightest
+  const kBase=Math.round(last/1000)*1000;
+  for(let d=-2000;d<=2000;d+=1000){
+    const r=kBase+d;
+    if(r>minP&&r<maxP)
+      levels.push({price:r,label:r.toString(),col:'rgba(201,168,76,.85)',w:1.4,dash:'6,3',type:'round_k'});
   }
-  // Recent swing high — highest high in last 20 candles (excluding last 3)
-  const lookback=Math.min(candles.length-3,20);
+  // Hundreds (e.g. 3100, 3200) — medium strength, skip thousands
+  const hBase=Math.round(last/100)*100;
+  for(let d=-500;d<=500;d+=100){
+    const r=hBase+d;
+    if(r%1000===0)continue;
+    if(r>minP&&r<maxP)
+      levels.push({price:r,label:r.toString(),col:'rgba(201,168,76,.45)',w:0.9,dash:'4,3',type:'round_h'});
+  }
+
+  // === LIQUIDITY ZONES — Swing Highs and Lows ===
+  const lookback=Math.min(candles.length-3,35);
   if(lookback>0){
     const swing=candles.slice(-lookback-3,-3);
-    const swingH=Math.max(...swing.map(c=>c.h));
-    const swingL=Math.min(...swing.map(c=>c.l));
-    if(swingH>minP&&swingH<maxP&&Math.abs(swingH-last)>5)
-      levels.push({price:swingH,label:'SwH',col:'rgba(45,184,124,.5)',w:1,dash:'3,2',type:'high'});
-    if(swingL>minP&&swingL<maxP&&Math.abs(swingL-last)>5)
-      levels.push({price:swingL,label:'SwL',col:'rgba(224,82,82,.5)',w:1,dash:'3,2',type:'low'});
+    const allH=swing.map(c=>c.h);
+    const allL=swing.map(c=>c.l);
+    const swingH=Math.max(...allH);
+    const swingL=Math.min(...allL);
+    if(swingH>minP&&swingH<maxP&&Math.abs(swingH-last)>1.5)
+      levels.push({price:swingH,label:'LZ↑',col:'rgba(45,184,124,.7)',w:1.1,dash:'3,2',type:'high'});
+    if(swingL>minP&&swingL<maxP&&Math.abs(swingL-last)>1.5)
+      levels.push({price:swingL,label:'LZ↓',col:'rgba(224,82,82,.7)',w:1.1,dash:'3,2',type:'low'});
+    // Secondary swing levels (next most extreme, at least 5pts from primary)
+    const filtered2H=swing.filter(c=>Math.abs(c.h-swingH)>5);
+    if(filtered2H.length){
+      const swH2=Math.max(...filtered2H.map(c=>c.h));
+      if(swH2>minP&&swH2<maxP&&Math.abs(swH2-last)>1.5&&Math.abs(swH2-swingH)>5)
+        levels.push({price:swH2,label:'LZ↑',col:'rgba(45,184,124,.38)',w:0.8,dash:'2,3',type:'high'});
+    }
+    const filtered2L=swing.filter(c=>Math.abs(c.l-swingL)>5);
+    if(filtered2L.length){
+      const swL2=Math.min(...filtered2L.map(c=>c.l));
+      if(swL2>minP&&swL2<maxP&&Math.abs(swL2-last)>1.5&&Math.abs(swL2-swingL)>5)
+        levels.push({price:swL2,label:'LZ↓',col:'rgba(224,82,82,.38)',w:0.8,dash:'2,3',type:'low'});
+    }
   }
-  // Equal highs / equal lows (within 0.5 points)
-  const eqThresh=0.5;
-  const highs=candles.slice(-30).map(c=>c.h);
-  const lows=candles.slice(-30).map(c=>c.l);
+
+  // === EQUAL HIGHS / EQUAL LOWS (within 1.5 pts, min 3 candles apart) ===
+  const eqThresh=1.5;
+  const recentC=candles.slice(-40);
+  const highs=recentC.map(c=>c.h);
+  const lows=recentC.map(c=>c.l);
   let eqH=null,eqL=null;
-  for(let i=0;i<highs.length-1;i++){
-    for(let j=i+1;j<highs.length;j++){
-      if(Math.abs(highs[i]-highs[j])<eqThresh&&highs[i]>minP&&highs[i]<maxP){eqH=highs[i];break;}
+  outer:for(let i=0;i<highs.length-3;i++){
+    for(let j=i+3;j<highs.length;j++){
+      if(Math.abs(highs[i]-highs[j])<eqThresh&&highs[i]>minP&&highs[i]<maxP){
+        eqH=(highs[i]+highs[j])/2;break outer;
+      }
     }
-    if(eqH)break;
   }
-  for(let i=0;i<lows.length-1;i++){
-    for(let j=i+1;j<lows.length;j++){
-      if(Math.abs(lows[i]-lows[j])<eqThresh&&lows[i]>minP&&lows[i]<maxP){eqL=lows[i];break;}
+  outerL:for(let i=0;i<lows.length-3;i++){
+    for(let j=i+3;j<lows.length;j++){
+      if(Math.abs(lows[i]-lows[j])<eqThresh&&lows[i]>minP&&lows[i]<maxP){
+        eqL=(lows[i]+lows[j])/2;break outerL;
+      }
     }
-    if(eqL)break;
   }
-  if(eqH)levels.push({price:eqH,label:'EqH',col:'rgba(45,184,124,.35)',w:0.8,dash:'2,3',type:'eqhigh'});
-  if(eqL)levels.push({price:eqL,label:'EqL',col:'rgba(224,82,82,.35)',w:0.8,dash:'2,3',type:'eqlow'});
+  if(eqH)levels.push({price:eqH,label:'EqH',col:'rgba(45,184,124,.5)',w:0.9,dash:'2,3',type:'eqhigh'});
+  if(eqL)levels.push({price:eqL,label:'EqL',col:'rgba(224,82,82,.5)',w:0.9,dash:'2,3',type:'eqlow'});
+
+  // === REJECTED WICK LEVELS — candle where wick > 65% of total range ===
+  candles.slice(-25).forEach(c=>{
+    const totalRange=c.h-c.l;
+    if(totalRange<1)return;
+    const upperWick=c.h-Math.max(c.o,c.c);
+    const lowerWick=Math.min(c.o,c.c)-c.l;
+    const maxWick=Math.max(upperWick,lowerWick);
+    if(maxWick/totalRange>0.65){
+      const isUpper=upperWick>lowerWick;
+      const rejP=isUpper?c.h:c.l;
+      if(rejP>minP&&rejP<maxP&&Math.abs(rejP-last)>1){
+        levels.push({
+          price:rejP,
+          label:isUpper?'Rej↑':'Rej↓',
+          col:isUpper?'rgba(45,184,124,.32)':'rgba(224,82,82,.32)',
+          w:0.7,dash:'1,3',
+          type:isUpper?'rej_high':'rej_low'
+        });
+      }
+    }
+  });
+
   return levels;
 }
 
@@ -5365,11 +5416,14 @@ function renderLevelLegend(levels){
   const el=document.getElementById('az-levels-list');
   if(!el)return;
   const types=[
-    {key:'round',label:'Round $',col:'#C9A84C'},
-    {key:'high',label:'Swing High',col:'#2DB87C'},
-    {key:'low',label:'Swing Low',col:'#E05252'},
+    {key:'round_k',label:'RN · Thousand',col:'#C9A84C'},
+    {key:'round_h',label:'RN · Hundred',col:'#C9A84C'},
+    {key:'high',label:'Liq Zone ↑',col:'#2DB87C'},
+    {key:'low',label:'Liq Zone ↓',col:'#E05252'},
     {key:'eqhigh',label:'Equal Highs',col:'#2DB87C'},
     {key:'eqlow',label:'Equal Lows',col:'#E05252'},
+    {key:'rej_high',label:'Rejected Wick ↑',col:'#2DB87C'},
+    {key:'rej_low',label:'Rejected Wick ↓',col:'#E05252'},
   ];
   const found=new Set(levels.map(l=>l.type));
   el.innerHTML=types.filter(t=>found.has(t.key)).map(t=>
@@ -5381,26 +5435,35 @@ function renderLevelLegend(levels){
 function updatePresessionReadout(){
   const pr=document.getElementById('az-presession-readout');
   if(!pr||!_azCandles.length)return;
-  // Use visible window
   const vis=Math.max(5,Math.min(_azViewState.visible,_azCandles.length));
   const off=Math.max(0,_azViewState.offset);
   const candles=_azCandles.slice(Math.max(0,_azCandles.length-vis-off),_azCandles.length-off);
   const last=candles[candles.length-1];
-  const now=new Date();
-  const watH=((now.getUTCHours()+1)%24);
-  // Detect trend from recent candles
+  // HTF Bias — higher highs/lows vs lower highs/lows
   const c20=candles.slice(-20);
-  const avgClose=c20.reduce((s,c)=>s+c.c,0)/c20.length;
-  const bias=last.c>avgClose?'Bullish':'Bearish';
-  const biasCol=bias==='Bullish'?'#2DB87C':'#E05252';
-  // Round numbers near price
-  const nearRound=Math.round(last.c/50)*50;
-  const distToRound=Math.abs(last.c-nearRound).toFixed(1);
-  // Nearest swing
+  const midH=c20[c20.length-1].h;const midL=c20[c20.length-1].l;
+  const firstH=c20[0].h;const firstL=c20[0].l;
+  const bias=(midH>firstH&&midL>firstL)?'Bullish':(midH<firstH&&midL<firstL)?'Bearish':'Mixed';
+  const biasCol=bias==='Bullish'?'#2DB87C':bias==='Bearish'?'#E05252':'#C9A84C';
+  // Nearest tiered round number
+  function nearestRN(p){
+    const k=Math.round(p/1000)*1000;const h=Math.round(p/100)*100;
+    const t=Math.round(p/10)*10;const u5=Math.round(p/5)*5;
+    const candidates=[
+      {price:k,label:k+' (Thousand)',dist:Math.abs(p-k)},
+      {price:h,label:h+' (Hundred)',dist:Math.abs(p-h)},
+      {price:t,label:t+' (Ten)',dist:Math.abs(p-t)},
+      {price:u5%10===5?u5:u5+5,label:(u5%10===5?u5:u5+5)+' (Unit-5)',dist:Math.abs(p-(u5%10===5?u5:u5+5))}
+    ];
+    candidates.sort((a,b)=>a.dist-b.dist);
+    return candidates[0];
+  }
+  const rn=nearestRN(last.c);
   const swH=Math.max(...candles.slice(-20,-3).map(c=>c.h)).toFixed(2);
   const swL=Math.min(...candles.slice(-20,-3).map(c=>c.l)).toFixed(2);
-  const tfName=_azTF==='1h'?'1H':_azTF==='15min'?'15M':'5M';
-  const session=watH>=22||watH<2?'Asia':(watH>=11&&watH<17?'NY':'Pre-Session');
+  const tfName=_azTF==='4h'?'4H':_azTF==='1h'?'1H':_azTF==='15min'?'15M':'5M';
+  const now=new Date();const watH=((now.getUTCHours()+1)%24);
+  const session=watH>=22||watH<2?'Asia':watH>=11&&watH<17?'NY':'Outside Session';
   pr.innerHTML=
     `<div style="font-size:8px;color:#444;letter-spacing:.1em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:8px">Session: ${session} · ${tfName} Chart</div>`+
     `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">`+
@@ -5413,11 +5476,11 @@ function updatePresessionReadout(){
         `<div style="font-size:12px;font-weight:700;color:#E2DDD6;font-family:DM Mono,monospace">${last.c.toFixed(2)}</div>`+
       `</div>`+
       `<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:5px;padding:7px 9px">`+
-        `<div style="font-size:8px;color:#333;font-family:DM Mono,monospace;margin-bottom:2px">NEAREST ROUND</div>`+
-        `<div style="font-size:12px;font-weight:700;color:#C9A84C;font-family:DM Mono,monospace">$${nearRound} <span style="font-size:9px;font-weight:400">(${distToRound} pts)</span></div>`+
+        `<div style="font-size:8px;color:#333;font-family:DM Mono,monospace;margin-bottom:2px">NEAREST RN</div>`+
+        `<div style="font-size:11px;font-weight:700;color:#C9A84C;font-family:DM Mono,monospace">${rn.label} <span style="font-size:9px;font-weight:400">(${rn.dist.toFixed(1)}pts)</span></div>`+
       `</div>`+
       `<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:5px;padding:7px 9px">`+
-        `<div style="font-size:8px;color:#333;font-family:DM Mono,monospace;margin-bottom:2px">SWING RANGE</div>`+
+        `<div style="font-size:8px;color:#333;font-family:DM Mono,monospace;margin-bottom:2px">LIQ RANGE</div>`+
         `<div style="font-size:10px;font-weight:700;color:#2DB87C;font-family:DM Mono,monospace">${swH}</div>`+
         `<div style="font-size:10px;font-weight:700;color:#E05252;font-family:DM Mono,monospace">${swL}</div>`+
       `</div>`+
@@ -5508,52 +5571,118 @@ async function runAIAnalysis(){
   const first=recent[0];
   const watH=((new Date().getUTCHours()+1)%24);
   const session=watH>=22||watH<2?'Asia':(watH>=11&&watH<17?'NY':'Outside session');
-  const tfLabel=_azTF==='1h'?'1-hour':_azTF==='15min'?'15-minute':'5-minute';
+  const tfLabel=_azTF==='4h'?'4-hour':_azTF==='1h'?'1-hour':_azTF==='15min'?'15-minute':'5-minute';
   const ohlcSummary=recent.slice(-15).map((c,i)=>`${i+1}. O:${c.o.toFixed(2)} H:${c.h.toFixed(2)} L:${c.l.toFixed(2)} C:${c.c.toFixed(2)} ${c.c>=c.o?'▲':'▼'}`).join('\n');
   // Swing levels
   const swH=Math.max(...recent.slice(0,-3).map(c=>c.h)).toFixed(2);
   const swL=Math.min(...recent.slice(0,-3).map(c=>c.l)).toFixed(2);
-  // Round numbers
-  const nearRound=Math.round(last.c/50)*50;
-  const prompt=`You are a professional SMC (Smart Money Concepts) trading analyst specializing in XAUUSD. Analyze this real-time ${tfLabel} XAUUSD data for ToxikWick strategy confluences.
+  // Build tiered round numbers near price for prompt context
+  function getNearRNs(p){
+    const rns=[];
+    const k=Math.round(p/1000)*1000;
+    if(Math.abs(k-p)<300)rns.push(k+' [Thousand]');
+    const h=Math.round(p/100)*100;
+    if(h%1000!==0)rns.push(h+' [Hundred]');
+    const h2=h+(p>h?100:-100);
+    if(h2%1000!==0&&Math.abs(h2-p)<150)rns.push(h2+' [Hundred]');
+    const t=Math.round(p/10)*10;
+    if(t%100!==0&&Math.abs(t-p)<25)rns.push(t+' [Ten]');
+    const u5raw=Math.round(p/5)*5;
+    const u5=u5raw%10===5?u5raw:u5raw+5;
+    if(Math.abs(u5-p)<12)rns.push(u5+' [Unit-5]');
+    return rns.join(', ')||'None in immediate range';
+  }
+  const nearRoundsText=getNearRNs(last.c);
 
-CURRENT CONTEXT:
-- Symbol: XAU/USD (Gold)
-- Timeframe: ${tfLabel}
-- Session: ${session}
-- Current Price: ${last.c.toFixed(2)}
-- Recent Swing High: ${swH}
-- Recent Swing Low: ${swL}
-- Nearest Round Number: $${nearRound}
-- Price range analyzed: ${first.t.toUTCString().substring(17,22)} to ${last.t.toUTCString().substring(17,22)}
+  // Build trade history context from journal for AI learning
+  const histTrades=(trades||[]).slice(0,25);
+  const historyContext=histTrades.length>0
+    ?histTrades.map(t=>{
+        const conf=(t.notes||'')
+          ?['Institutional Displacement','Liquidity Sweep','S/R Level','Round Number','Rejection Candle Closed','Continuation Candle Close']
+            .filter(lbl=>(t.notes||'').includes('OK '+lbl)).join(', ')
+          :'';
+        return `${t.trade_date||'?'} | ${t.session||'?'} | ${t.direction||'?'} | ${t.result||'?'} | P&L: ${parseFloat(t.pnl||0)>=0?'+':''}${parseFloat(t.pnl||0).toFixed(2)} | Confluences: ${conf||'not recorded'}`;
+      }).join('\n')
+    :'No trade history yet — this will improve your analysis as you log more trades.';
 
-LAST 15 CANDLES (most recent at bottom):
+  const prompt=`You are an expert market analyst specializing in institutional algorithm footprint analysis on XAUUSD. You do NOT use or reference SMC. You follow the ToxikWick_Algo_Logic — tracking how big banks and institutional algorithms execute orders, sweep liquidity, and reverse price.
+
+==== ToxikWick_Algo_Logic FRAMEWORK ====
+
+LIQUIDITY ZONES (LZ):
+Swing highs, swing lows, equal highs, equal lows, and rejected wicks — these are where stop losses cluster. The algorithm targets these zones to collect liquidity before reversing.
+
+LIQUIDITY SWEEP:
+Price hunts a LZ, overshoots it by 0.5 to 2 pips (the manipulation), then reverses hard. The sweep candle wick goes through the zone but the body does NOT close beyond it. This is the institutional footprint.
+
+ROUND NUMBERS (RN) — Tiered system:
+- Thousands: 3000, 4000, 5000
+- Hundreds: 3100, 3200, 3300 to 3900
+- Tens: 3210, 3220, 3230
+- Unit-5s: 3205, 3215, 3225
+A RN is only valid AFTER: price taps it → manipulates (slight overshoot 0.5–1.8 pips) → closes a CLEAN rejection candle → does NOT return to hunt it again.
+
+S/R LEVEL:
+A zone that earns its status — NOT drawn in advance. Price tests an area 2+ times without breaking through. Once confirmed, a strong displacement candle closing BEYOND the zone is the continuation signal.
+
+SETUP PATTERNS:
+- Pattern A (Retest): LZ swept → price retraces to swept zone → zone holds on 2+ taps (S/R confirmed) → strong continuation candle closes beyond → STRIKE
+- Pattern B (Direct): LZ swept → immediate large body displacement candle closes strongly away → price keeps moving without retest → STRIKE
+
+EXPANSION TRAP (stay out):
+Price sweeps one LZ, creates new liquidity, sweeps that too before reversing. Signs: weak rejection candle, body closes BEYOND the swept level, another obvious unswept LZ nearby, no RN anchor.
+
+SESSIONS (each is fully independent — Asia or NY, each has its own liquidity to hunt):
+Asia: 22:00–02:00 WAT | NY: 11:00–17:00 WAT
+
+==== CONFLUENCE RULES ====
+ANCHOR (minimum 1 required): Liquidity Sweep OR S/R Level tap
+CONFIRMATION (minimum 1 required, MUST follow anchor): Rejection Candle Closed OR Continuation Candle Close
+SUPPORTING (strengthens the setup): Institutional Displacement + Round Number
+MANDATORY (trader action, not candle-detectable): Entry & SL Set
+
+==== SETUP STATE DEFINITIONS ====
+WATCHING — LZ identified approaching, not yet swept. Observe only. Do NOT enter.
+ARMED — Sweep has happened. Awaiting candle confirmation (rejection or continuation). Patience required.
+STRIKE — Anchor confirmed + Confirmation candle CLOSED. All confluences met. Enter now.
+WAIT — Expansion trap likely. Price may sweep more liquidity. Stay out.
+
+==== CURRENT MARKET DATA ====
+Symbol: XAU/USD (Gold Spot)
+Timeframe: ${tfLabel}
+Session: ${session} (WAT)
+Current Price: ${last.c.toFixed(2)}
+Recent Swing High (Liquidity Zone ↑): ${swH}
+Recent Swing Low (Liquidity Zone ↓): ${swL}
+Round Numbers Near Price: ${nearRoundsText}
+
+LAST 15 CANDLES — oldest first, most recent at bottom:
 ${ohlcSummary}
 
-ANALYZE FOR THESE 6 TOXIKWICK CONFLUENCES:
-1. Smart Money Presence — institutional displacement candle, large body, strong momentum
-2. Liquidity Sweep — price swept a recent high/low/equal level then reversed
-3. Rejection Candle — candle with significant wick (>60% of range) showing rejection at a level
-4. Draw on Liquidity — clear liquidity target (equal highs, equal lows, or round number) visible above or below
-5. HTF Bias Alignment — current price action aligned with the dominant trend direction
-6. Round Number Proximity — price within 5 points of a psychological $50 level
+==== YOUR TRADE HISTORY (last 25 trades — learn these patterns to improve accuracy) ====
+${historyContext}
 
-RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
+==== RESPOND IN THIS EXACT JSON ONLY — no preamble, no markdown, no extra text ====
 {
   "confluences": {
-    "smart_money": {"present": true/false, "detail": "one sentence"},
-    "liquidity_sweep": {"present": true/false, "detail": "one sentence"},
-    "rejection_candle": {"present": true/false, "detail": "one sentence"},
-    "draw_on_liquidity": {"present": true/false, "detail": "one sentence"},
-    "htf_bias": {"present": true/false, "detail": "one sentence", "direction": "Bullish/Bearish/Unclear"},
-    "round_number": {"present": true/false, "detail": "one sentence"}
+    "inst_displacement": {"present": true/false, "detail": "one sentence: describe the institutional footprint candle if visible"},
+    "liquidity_sweep": {"present": true/false, "detail": "one sentence: which level was swept, direction, and pip overshoot if visible"},
+    "sr_level": {"present": true/false, "detail": "one sentence: describe the zone, how many taps, and whether it held"},
+    "round_number": {"present": true/false, "detail": "one sentence: which RN tier, price, and whether manipulation+rejection is confirmed"},
+    "rejection_candle": {"present": true/false, "detail": "one sentence: wick size vs body, candle close position, level it rejected"},
+    "continuation_candle": {"present": true/false, "detail": "one sentence: Pattern A or B, body size, closing direction"}
   },
-  "grade": "A/B/C/X",
-  "direction": "Long/Short/Wait",
-  "entry_zone": "price range or 'No setup'",
-  "sl_suggestion": "price level or 'N/A'",
-  "summary": "2-3 sentence overall assessment",
-  "missing": "what needs to happen for a higher grade setup"
+  "setup_state": "WATCHING or ARMED or STRIKE or WAIT",
+  "sweep_count": "None or Single or Double",
+  "pattern": "A or B or None",
+  "grade": "A or B or C or X",
+  "direction": "Long or Short or Wait",
+  "entry_zone": "specific price range e.g. 3285–3287 or No setup yet",
+  "sl_suggestion": "price level below/above swept LZ or N/A",
+  "expansion_trap_risk": "Low or Medium or High",
+  "summary": "2–3 sentences using ToxikWick_Algo_Logic language. State what the algorithm has done and what to do next.",
+  "missing": "one sentence: what specific price action needs to happen to trigger a STRIKE"
 }`;
   try{
     // Direct REST fetch — no SDK dependency, no version conflicts
@@ -5619,56 +5748,98 @@ function renderAnalysisResult(r){
   const out=document.getElementById('az-analysis-output');
   if(!out||!r)return;
   const gradeClass={'A':'az-grade-A','B':'az-grade-B','C':'az-grade-C','X':'az-grade-X'}[r.grade]||'az-grade-X';
-  const dirCol=r.direction==='Long'?'#2DB87C':r.direction==='Short'?'#E05252':'#444';
+  const dirCol=r.direction==='Long'?'#2DB87C':r.direction==='Short'?'#E05252':'#555';
+
+  // Setup state styling
+  const stateStyles={
+    'STRIKE': {col:'#2DB87C',bg:'rgba(45,184,124,.08)',border:'rgba(45,184,124,.25)',icon:'⚡'},
+    'ARMED':  {col:'#C9A84C',bg:'rgba(201,168,76,.07)',border:'rgba(201,168,76,.22)',icon:'👁'},
+    'WATCHING':{col:'#7B8FF7',bg:'rgba(123,143,247,.07)',border:'rgba(123,143,247,.2)',icon:'⏳'},
+    'WAIT':   {col:'#E05252',bg:'rgba(224,82,82,.07)',border:'rgba(224,82,82,.22)',icon:'🛑'}
+  };
+  const state=r.setup_state||'WATCHING';
+  const ss=stateStyles[state]||stateStyles['WATCHING'];
+
   const confNames={
-    smart_money:'Smart Money Presence',
+    inst_displacement:'Institutional Displacement',
     liquidity_sweep:'Liquidity Sweep',
-    rejection_candle:'Rejection Candle',
-    draw_on_liquidity:'Draw on Liquidity',
-    htf_bias:'HTF Bias Alignment',
-    round_number:'Round Number Proximity'
+    sr_level:'S/R Level',
+    round_number:'Round Number',
+    rejection_candle:'Rejection Candle Closed',
+    continuation_candle:'Continuation Candle Close'
   };
   const confRows=Object.entries(r.confluences||{}).map(([key,val])=>{
-    const present=val.present;
-    const col=present?'#2DB87C':'#E05252';
-    const ico=present?'✓':'✗';
+    const present=val&&val.present;
+    const col=present?'#2DB87C':'#555';
+    const ico=present?'✓':'○';
     return`<div class="az-conf-row">`+
       `<div class="az-conf-row-top">`+
         `<div class="az-conf-label">${confNames[key]||key}</div>`+
         `<div style="font-size:13px;font-weight:700;color:${col};flex-shrink:0;line-height:1">${ico}</div>`+
       `</div>`+
-      (val.detail?`<div class="az-conf-detail">${val.detail}</div>`:'')+
+      ((val&&val.detail)?`<div class="az-conf-detail">${val.detail}</div>`:'')+
     `</div>`;
   }).join('');
-  const metCount=Object.values(r.confluences||{}).filter(v=>v.present).length;
+
+  const metCount=Object.values(r.confluences||{}).filter(v=>v&&v.present).length;
+  const trapCol=r.expansion_trap_risk==='High'?'#E05252':r.expansion_trap_risk==='Medium'?'#C9A84C':'#2DB87C';
+
   out.innerHTML=
-    // Grade + Direction header
+    // ── SETUP STATE BANNER (most prominent element) ──
+    `<div style="background:${ss.bg};border:1px solid ${ss.border};border-radius:8px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">`+
+      `<div style="font-size:22px;flex-shrink:0">${ss.icon}</div>`+
+      `<div>`+
+        `<div style="font-size:14px;font-weight:800;color:${ss.col};font-family:DM Mono,monospace;letter-spacing:.06em">${state}</div>`+
+        `<div style="font-size:10px;color:${ss.col};opacity:.7;font-family:DM Mono,monospace;margin-top:1px">`+
+          (state==='STRIKE'?'All conditions met — entry valid now':
+           state==='ARMED'?'Sweep confirmed — waiting for closed candle':
+           state==='WATCHING'?'LZ approaching — observe, do not enter yet':
+           'Expansion trap risk — stay out')+
+        `</div>`+
+      `</div>`+
+    `</div>`+
+    // ── Grade + Direction ──
     `<div style="display:flex;align-items:center;gap:12px;padding-bottom:12px;border-bottom:1px solid #1A1A1A;margin-bottom:12px">`+
       `<div class="az-grade ${gradeClass}">${r.grade||'X'}</div>`+
       `<div style="flex:1">`+
         `<div style="font-size:16px;font-weight:800;color:${dirCol};font-family:DM Mono,monospace">${r.direction||'Wait'}</div>`+
-        `<div style="font-size:10px;color:#444;font-family:DM Mono,monospace">${metCount}/6 confluences · ${r.grade==='A'?'High probability':r.grade==='B'?'Partial setup':r.grade==='C'?'Weak setup':'No setup'}</div>`+
+        `<div style="font-size:10px;color:#444;font-family:DM Mono,monospace">${metCount}/6 confluences · ${r.grade==='A'?'High probability':r.grade==='B'?'Partial setup':r.grade==='C'?'Weak — observe':'No setup'}</div>`+
+      `</div>`+
+      // Sweep count + Pattern pills
+      `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">`+
+        (r.sweep_count&&r.sweep_count!=='None'?`<span style="font-size:9px;color:#C9A84C;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.2);border-radius:3px;padding:2px 6px;font-family:DM Mono,monospace">${r.sweep_count} sweep</span>`:'')+
+        (r.pattern&&r.pattern!=='None'?`<span style="font-size:9px;color:#7B8FF7;background:rgba(123,143,247,.1);border:1px solid rgba(123,143,247,.2);border-radius:3px;padding:2px 6px;font-family:DM Mono,monospace">Pattern ${r.pattern}</span>`:'')+
       `</div>`+
     `</div>`+
-    // Confluence rows
+    // ── Confluence rows ──
     confRows+
-    // Entry zone + SL
-    (r.entry_zone&&r.entry_zone!=='No setup'?
-      `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:12px;margin-bottom:10px">`+
+    // ── Entry zone + SL + Trap risk ──
+    ((r.entry_zone&&r.entry_zone!=='No setup yet')?
+      `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:12px;margin-bottom:10px">`+
         `<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;padding:9px">`+
           `<div style="font-size:8px;color:#444;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Entry Zone</div>`+
-          `<div style="font-size:12px;font-weight:700;color:${dirCol};font-family:DM Mono,monospace">${r.entry_zone}</div>`+
+          `<div style="font-size:11px;font-weight:700;color:${dirCol};font-family:DM Mono,monospace">${r.entry_zone}</div>`+
         `</div>`+
         `<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;padding:9px">`+
-          `<div style="font-size:8px;color:#444;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">SL Suggestion</div>`+
-          `<div style="font-size:12px;font-weight:700;color:#E05252;font-family:DM Mono,monospace">${r.sl_suggestion||'N/A'}</div>`+
+          `<div style="font-size:8px;color:#444;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">SL Level</div>`+
+          `<div style="font-size:11px;font-weight:700;color:#E05252;font-family:DM Mono,monospace">${r.sl_suggestion||'N/A'}</div>`+
         `</div>`+
-      `</div>`:'')+
-    // Summary
+        `<div style="background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;padding:9px">`+
+          `<div style="font-size:8px;color:#444;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:3px">Trap Risk</div>`+
+          `<div style="font-size:11px;font-weight:700;color:${trapCol};font-family:DM Mono,monospace">${r.expansion_trap_risk||'—'}</div>`+
+        `</div>`+
+      `</div>`:
+      (r.expansion_trap_risk?
+        `<div style="margin-top:10px;margin-bottom:8px;background:#0D0D0D;border:1px solid #1C1C1C;border-radius:6px;padding:9px;display:flex;justify-content:space-between;align-items:center">`+
+          `<span style="font-size:9px;color:#444;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em">Expansion Trap Risk</span>`+
+          `<span style="font-size:11px;font-weight:700;color:${trapCol};font-family:DM Mono,monospace">${r.expansion_trap_risk}</span>`+
+        `</div>`:'')
+    )+
+    // ── Summary + Missing ──
     `<div style="background:#0A0A0A;border:1px solid #161616;border-radius:6px;padding:10px 12px;margin-top:8px">`+
-      `<div style="font-size:9px;color:#444;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:5px">Analysis</div>`+
-      `<div style="font-size:11px;color:#888;line-height:1.6">${r.summary||''}</div>`+
-      (r.missing?`<div style="font-size:10px;color:#C9A84C;margin-top:8px;font-family:DM Mono,monospace">⚠ ${r.missing}</div>`:'')+
+      `<div style="font-size:9px;color:#444;letter-spacing:.08em;text-transform:uppercase;font-family:DM Mono,monospace;margin-bottom:5px">Algo Read</div>`+
+      `<div style="font-size:11px;color:#888;line-height:1.7">${r.summary||''}</div>`+
+      (r.missing?`<div style="font-size:10px;color:#C9A84C;margin-top:8px;padding-top:8px;border-top:1px solid #161616;font-family:DM Mono,monospace">⚠ To trigger STRIKE: ${r.missing}</div>`:'')+
     `</div>`;
 }
 
