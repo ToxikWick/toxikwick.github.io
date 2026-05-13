@@ -5165,8 +5165,32 @@ function renderAZChart(){
   levels.forEach(lv=>{
     const y=yS(lv.price);
     if(y<PAD.t||y>H-PAD.b)return;
-    levelLines+=`<line x1="${PAD.l}" y1="${y.toFixed(1)}" x2="${W-PAD.r}" y2="${y.toFixed(1)}" stroke="${lv.col}" stroke-width="${lv.w}" stroke-dasharray="${lv.dash}"/>`;
-    levelLines+=`<text x="${W-PAD.r+4}" y="${(y-2).toFixed(1)}" font-size="7" fill="${lv.col}" font-family="DM Mono,monospace" text-anchor="start">${lv.label}</text>`;
+    const isLZ=lv.type==='lz_high'||lv.type==='lz_low';
+    const isRoundK=lv.type==='round_k';
+    // For LZ lines: start from the candle that formed the level (anchored)
+    // startFrac is the candle's position in the FULL _azCandles array
+    // We need to map it to the DISPLAY window
+    let x1=PAD.l;
+    if(isLZ&&lv.startFrac!==undefined){
+      // Map full-array fraction to display window
+      const totalC=_azCandles.length;
+      const absIdx=Math.round(lv.startFrac*totalC);
+      // display = _azCandles.slice(startIdx, endIdx)
+      const dispStart=totalC-off-vis;
+      const relIdx=absIdx-dispStart;
+      if(relIdx>=0&&relIdx<n){
+        x1=PAD.l+(relIdx/n)*cW+(candleW/2);
+      }else if(relIdx<0){
+        x1=PAD.l; // level formed before visible window — draw from left edge
+      }else{
+        return; // level formed after visible window — don't draw
+      }
+    }
+    const x2=W-PAD.r;
+    const dashAttr=lv.dash==='none'?'':` stroke-dasharray="${lv.dash}"`;
+    levelLines+=`<line x1="${x1.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${lv.col}" stroke-width="${lv.w}"${dashAttr}/>`;
+    // Price label — right edge only, no floating mid-chart labels
+    levelLines+=`<text x="${(W-PAD.r+3).toFixed(1)}" y="${(y+3).toFixed(1)}" font-size="${isRoundK?'7.5':'7'}" fill="${lv.col}" font-family="DM Mono,monospace" text-anchor="start" font-weight="${isLZ?'600':'400'}">${lv.label}</text>`;
   });
 
   // ── Candles ──
@@ -5319,94 +5343,88 @@ function niceNum(v){
 function detectKeyLevels(candles,minP,maxP){
   const levels=[];
   const last=candles[candles.length-1].c;
+  const n=candles.length;
 
-  // === ROUND NUMBERS — Tiered system ===
-  // Thousands (e.g. 3000, 4000) — strongest, brightest
+  // === ROUND NUMBERS — Tiered, dashed gold lines ===
   const kBase=Math.round(last/1000)*1000;
   for(let d=-2000;d<=2000;d+=1000){
     const r=kBase+d;
     if(r>minP&&r<maxP)
-      levels.push({price:r,label:r.toString(),col:'rgba(201,168,76,.85)',w:1.4,dash:'6,3',type:'round_k'});
+      levels.push({price:r,label:r.toFixed(0),col:'rgba(201,168,76,.75)',w:1.2,dash:'6,3',type:'round_k',startFrac:0});
   }
-  // Hundreds (e.g. 3100, 3200) — medium strength, skip thousands
   const hBase=Math.round(last/100)*100;
   for(let d=-500;d<=500;d+=100){
     const r=hBase+d;
     if(r%1000===0)continue;
     if(r>minP&&r<maxP)
-      levels.push({price:r,label:r.toString(),col:'rgba(201,168,76,.45)',w:0.9,dash:'4,3',type:'round_h'});
+      levels.push({price:r,label:r.toFixed(0),col:'rgba(201,168,76,.38)',w:0.8,dash:'4,3',type:'round_h',startFrac:0});
   }
 
-  // === LIQUIDITY ZONES — Swing Highs and Lows ===
-  const lookback=Math.min(candles.length-3,35);
-  if(lookback>0){
-    const swing=candles.slice(-lookback-3,-3);
-    const allH=swing.map(c=>c.h);
-    const allL=swing.map(c=>c.l);
-    const swingH=Math.max(...allH);
-    const swingL=Math.min(...allL);
-    if(swingH>minP&&swingH<maxP&&Math.abs(swingH-last)>1.5)
-      levels.push({price:swingH,label:'LZ↑',col:'rgba(45,184,124,.7)',w:1.1,dash:'3,2',type:'high'});
-    if(swingL>minP&&swingL<maxP&&Math.abs(swingL-last)>1.5)
-      levels.push({price:swingL,label:'LZ↓',col:'rgba(224,82,82,.7)',w:1.1,dash:'3,2',type:'low'});
-    // Secondary swing levels (next most extreme, at least 5pts from primary)
-    const filtered2H=swing.filter(c=>Math.abs(c.h-swingH)>5);
-    if(filtered2H.length){
-      const swH2=Math.max(...filtered2H.map(c=>c.h));
-      if(swH2>minP&&swH2<maxP&&Math.abs(swH2-last)>1.5&&Math.abs(swH2-swingH)>5)
-        levels.push({price:swH2,label:'LZ↑',col:'rgba(45,184,124,.38)',w:0.8,dash:'2,3',type:'high'});
-    }
-    const filtered2L=swing.filter(c=>Math.abs(c.l-swingL)>5);
-    if(filtered2L.length){
-      const swL2=Math.min(...filtered2L.map(c=>c.l));
-      if(swL2>minP&&swL2<maxP&&Math.abs(swL2-last)>1.5&&Math.abs(swL2-swingL)>5)
-        levels.push({price:swL2,label:'LZ↓',col:'rgba(224,82,82,.38)',w:0.8,dash:'2,3',type:'low'});
-    }
-  }
+  // === LIQUIDITY ZONES — solid red, anchored from candle that formed them ===
+  // Find top 2 swing highs and top 2 swing lows from visible candles
+  // Each level carries the candle index so we can anchor the line start
+  const lookback=Math.min(n-2,50);
+  const swing=candles.slice(-lookback-2,-2);
 
-  // === EQUAL HIGHS / EQUAL LOWS (within 1.5 pts, min 3 candles apart) ===
-  const eqThresh=1.5;
-  const recentC=candles.slice(-40);
-  const highs=recentC.map(c=>c.h);
-  const lows=recentC.map(c=>c.l);
-  let eqH=null,eqL=null;
-  outer:for(let i=0;i<highs.length-3;i++){
-    for(let j=i+3;j<highs.length;j++){
-      if(Math.abs(highs[i]-highs[j])<eqThresh&&highs[i]>minP&&highs[i]<maxP){
-        eqH=(highs[i]+highs[j])/2;break outer;
-      }
-    }
+  // Build peak list: local maxima (high > neighbours)
+  const peaks=[];
+  for(let i=1;i<swing.length-1;i++){
+    if(swing[i].h>=swing[i-1].h&&swing[i].h>=swing[i+1].h)
+      peaks.push({price:swing[i].h,idx:n-lookback-2+i});
   }
-  outerL:for(let i=0;i<lows.length-3;i++){
-    for(let j=i+3;j<lows.length;j++){
-      if(Math.abs(lows[i]-lows[j])<eqThresh&&lows[i]>minP&&lows[i]<maxP){
-        eqL=(lows[i]+lows[j])/2;break outerL;
-      }
-    }
-  }
-  if(eqH)levels.push({price:eqH,label:'EqH',col:'rgba(45,184,124,.5)',w:0.9,dash:'2,3',type:'eqhigh'});
-  if(eqL)levels.push({price:eqL,label:'EqL',col:'rgba(224,82,82,.5)',w:0.9,dash:'2,3',type:'eqlow'});
+  // Also include absolute highest if not already captured
+  const absH=Math.max(...swing.map(c=>c.h));
+  const absHIdx=swing.findIndex(c=>c.h===absH);
+  if(absHIdx>=0&&!peaks.find(p=>Math.abs(p.price-absH)<0.5))
+    peaks.push({price:absH,idx:n-lookback-2+absHIdx});
 
-  // === REJECTED WICK LEVELS — candle where wick > 65% of total range ===
-  candles.slice(-25).forEach(c=>{
-    const totalRange=c.h-c.l;
-    if(totalRange<1)return;
-    const upperWick=c.h-Math.max(c.o,c.c);
-    const lowerWick=Math.min(c.o,c.c)-c.l;
-    const maxWick=Math.max(upperWick,lowerWick);
-    if(maxWick/totalRange>0.65){
-      const isUpper=upperWick>lowerWick;
-      const rejP=isUpper?c.h:c.l;
-      if(rejP>minP&&rejP<maxP&&Math.abs(rejP-last)>1){
-        levels.push({
-          price:rejP,
-          label:isUpper?'Rej↑':'Rej↓',
-          col:isUpper?'rgba(45,184,124,.32)':'rgba(224,82,82,.32)',
-          w:0.7,dash:'1,3',
-          type:isUpper?'rej_high':'rej_low'
-        });
-      }
+  // Build trough list: local minima
+  const troughs=[];
+  for(let i=1;i<swing.length-1;i++){
+    if(swing[i].l<=swing[i-1].l&&swing[i].l<=swing[i+1].l)
+      troughs.push({price:swing[i].l,idx:n-lookback-2+i});
+  }
+  const absL=Math.min(...swing.map(c=>c.l));
+  const absLIdx=swing.findIndex(c=>c.l===absL);
+  if(absLIdx>=0&&!troughs.find(t=>Math.abs(t.price-absL)<0.5))
+    troughs.push({price:absL,idx:n-lookback-2+absLIdx});
+
+  // Deduplicate: remove peaks within 3pts of each other (keep highest)
+  const dedupe=(arr,key,keep)=>{
+    arr.sort((a,b)=>keep==='max'?b.price-a.price:a.price-b.price);
+    const out=[];
+    for(const item of arr){
+      if(!out.find(x=>Math.abs(x.price-item.price)<3))out.push(item);
+      if(out.length>=2)break;
     }
+    return out;
+  };
+
+  const topPeaks=dedupe(peaks,'price','max');
+  const topTroughs=dedupe(troughs,'price','min');
+
+  // Check equal highs — if two peaks within 1.5pts → mark as equal high
+  const hasEqH=topPeaks.length>=2&&Math.abs(topPeaks[0].price-topPeaks[1].price)<1.5;
+  const hasEqL=topTroughs.length>=2&&Math.abs(topTroughs[0].price-topTroughs[1].price)<1.5;
+
+  // Push LZ levels — all solid red (#E05252), anchored from the candle that formed them
+  const LZ_COL='rgba(224,82,82,0.85)';
+  const LZ_W=1.1;
+
+  topPeaks.forEach((pk,i)=>{
+    if(pk.price<=minP||pk.price>=maxP)return;
+    if(Math.abs(pk.price-last)<0.5)return;
+    const startFrac=pk.idx/n; // fractional position in full candle array
+    const label=pk.price.toFixed(2)+(hasEqH&&i===0?' EqH':'');
+    levels.push({price:pk.price,label,col:LZ_COL,w:LZ_W,dash:'none',type:'lz_high',startFrac});
+  });
+
+  topTroughs.forEach((tr,i)=>{
+    if(tr.price<=minP||tr.price>=maxP)return;
+    if(Math.abs(tr.price-last)<0.5)return;
+    const startFrac=tr.idx/n;
+    const label=tr.price.toFixed(2)+(hasEqL&&i===0?' EqL':'');
+    levels.push({price:tr.price,label,col:LZ_COL,w:LZ_W,dash:'none',type:'lz_low',startFrac});
   });
 
   return levels;
@@ -5418,12 +5436,8 @@ function renderLevelLegend(levels){
   const types=[
     {key:'round_k',label:'RN · Thousand',col:'#C9A84C'},
     {key:'round_h',label:'RN · Hundred',col:'#C9A84C'},
-    {key:'high',label:'Liq Zone ↑',col:'#2DB87C'},
-    {key:'low',label:'Liq Zone ↓',col:'#E05252'},
-    {key:'eqhigh',label:'Equal Highs',col:'#2DB87C'},
-    {key:'eqlow',label:'Equal Lows',col:'#E05252'},
-    {key:'rej_high',label:'Rejected Wick ↑',col:'#2DB87C'},
-    {key:'rej_low',label:'Rejected Wick ↓',col:'#E05252'},
+    {key:'lz_high',label:'Liq Zone ↑',col:'#E05252'},
+    {key:'lz_low',label:'Liq Zone ↓',col:'#E05252'},
   ];
   const found=new Set(levels.map(l=>l.type));
   el.innerHTML=types.filter(t=>found.has(t.key)).map(t=>
@@ -5565,14 +5579,18 @@ async function runAIAnalysis(){
   const out=document.getElementById('az-analysis-output');
   btn.disabled=true;btn.textContent='Analyzing...';
   out.innerHTML='<div class="az-thinking"><div class="az-dot"></div><div class="az-dot"></div><div class="az-dot"></div><span>Gemini is analyzing the candles...</span></div>';
-  // Build compact OHLC summary — last 30 candles
-  const recent=_azCandles.slice(-30);
+  // Build OHLC summary — last 25 candles with WAT timestamp so AI references by price+time not number
+  const recent=_azCandles.slice(-25);
   const last=recent[recent.length-1];
   const first=recent[0];
   const watH=((new Date().getUTCHours()+1)%24);
   const session=watH>=22||watH<2?'Asia':(watH>=11&&watH<17?'NY':'Outside session');
   const tfLabel=_azTF==='4h'?'4-hour':_azTF==='1h'?'1-hour':_azTF==='15min'?'15-minute':'5-minute';
-  const ohlcSummary=recent.slice(-15).map((c,i)=>`${i+1}. O:${c.o.toFixed(2)} H:${c.h.toFixed(2)} L:${c.l.toFixed(2)} C:${c.c.toFixed(2)} ${c.c>=c.o?'▲':'▼'}`).join('\n');
+  const ohlcSummary=recent.map(c=>{
+    const wh=((c.t.getUTCHours()+1)%24).toString().padStart(2,'0');
+    const wm=c.t.getUTCMinutes().toString().padStart(2,'0');
+    return `[${wh}:${wm}] O:${c.o.toFixed(2)} H:${c.h.toFixed(2)} L:${c.l.toFixed(2)} C:${c.c.toFixed(2)} ${c.c>=c.o?'▲':'▼'}`;
+  }).join('\n');
   // Swing levels
   const swH=Math.max(...recent.slice(0,-3).map(c=>c.h)).toFixed(2);
   const swL=Math.min(...recent.slice(0,-3).map(c=>c.l)).toFixed(2);
@@ -5665,7 +5683,8 @@ Recent Swing High (Liquidity Zone ↑): ${swH}
 Recent Swing Low (Liquidity Zone ↓): ${swL}
 Round Numbers Near Price: ${nearRoundsText}
 
-LAST 15 CANDLES — oldest first, most recent at bottom:
+LAST 25 CANDLES — each labeled with WAT time (oldest first, most recent at bottom).
+IMPORTANT: When referencing candles in your analysis, ALWAYS use the WAT time and price value — e.g. "the bearish candle at 13:00 that closed at 4698.20" or "the high at 4726.44 formed at 06:00". NEVER say "candle 4" or "candle 10" — those numbers mean nothing on the visible chart.
 ${ohlcSummary}
 
 ==== YOUR TRADE HISTORY (last 25 trades — learn these patterns to improve accuracy) ====
@@ -5684,14 +5703,19 @@ ${historyContext}
   "setup_state": "WATCHING or ARMED or STRIKE or WAIT",
   "sweep_count": "None or Single or Double",
   "pattern": "A or B or None",
-  "grade": "A or B or C or X",
+  "grade": "A = 5 or 6 confluences present | B = 3 or 4 confluences present | C = 2 confluences present | X = 0 or 1 confluence present. Count the true values above and assign grade strictly by that count.",
   "direction": "Long or Short or Wait",
   "entry_zone": "specific price range e.g. 3285–3287 or No setup yet",
   "sl_suggestion": "price level below/above swept LZ or N/A",
   "expansion_trap_risk": "Low or Medium or High",
   "summary": "2–3 sentences using ToxikWick_Algo_Logic language. State what the algorithm has done and what to do next.",
   "missing": "one sentence: what specific price action needs to happen to trigger a STRIKE"
-}`;
+}
+
+CRITICAL RULES:
+1. rejection_candle present=true ONLY if the wick clearly dominates the body (wick at least 2x body size) AND candle closed back inside or away from the level. If your detail says the body is too large or rejection is unclear, set present=false.
+2. continuation_candle present=true ONLY if a large body candle (body >60% of total candle range) has CLOSED strongly away from an S/R zone or swept LZ. A forming candle does NOT count.
+3. Grade MUST match the exact confluence count. Do not assign X when 3+ confluences are present.`;
   try{
     // Direct REST fetch — no SDK dependency, no version conflicts
     const apiUrl=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GKEY}`;
@@ -5755,6 +5779,8 @@ ${historyContext}
 function renderAnalysisResult(r){
   const out=document.getElementById('az-analysis-output');
   if(!out||!r)return;
+  // Recalculate metCount after safety net corrections
+  const finalCount=Object.values(r.confluences||{}).filter(v=>v&&v.present).length;
   const gradeClass={'A':'az-grade-A','B':'az-grade-B','C':'az-grade-C','X':'az-grade-X'}[r.grade]||'az-grade-X';
   const dirCol=r.direction==='Long'?'#2DB87C':r.direction==='Short'?'#E05252':'#555';
 
@@ -5790,6 +5816,26 @@ function renderAnalysisResult(r){
   }).join('');
 
   const metCount=Object.values(r.confluences||{}).filter(v=>v&&v.present).length;
+
+  // Client-side safety net: enforce grade matches confluence count
+  const correctGrade=metCount>=5?'A':metCount>=3?'B':metCount>=2?'C':'X';
+  r.grade=correctGrade;
+
+  // Client-side safety net: rejection candle present=false if detail mentions body too large / unclear
+  const rejConf=r.confluences?.rejection_candle;
+  if(rejConf&&rejConf.present&&rejConf.detail){
+    const d=rejConf.detail.toLowerCase();
+    if(d.includes('body is not')||d.includes('not small')||d.includes('unclear')||d.includes('not a clean')||d.includes('body too')||d.includes('not clean'))
+      rejConf.present=false;
+  }
+  // Same check for continuation candle
+  const contConf=r.confluences?.continuation_candle;
+  if(contConf&&contConf.present&&contConf.detail){
+    const d=contConf.detail.toLowerCase();
+    if(d.includes('no clear')||d.includes('not closed')||d.includes('forming')||d.includes('not strong'))
+      contConf.present=false;
+  }
+
   const trapCol=r.expansion_trap_risk==='High'?'#E05252':r.expansion_trap_risk==='Medium'?'#C9A84C':'#2DB87C';
   const curTFLabel={'4h':'4H · Macro','1h':'1H · HTF Bias','15min':'15M · Entry','5min':'5M · Precision'}[_azTF]||_azTF;
   const watHr=((new Date().getUTCHours()+1)%24);
@@ -5820,7 +5866,7 @@ function renderAnalysisResult(r){
       `<div class="az-grade ${gradeClass}">${r.grade||'X'}</div>`+
       `<div style="flex:1">`+
         `<div style="font-size:16px;font-weight:800;color:${dirCol};font-family:DM Mono,monospace">${r.direction||'Wait'}</div>`+
-        `<div style="font-size:10px;color:#444;font-family:DM Mono,monospace">${metCount}/6 confluences · ${r.grade==='A'?'High probability':r.grade==='B'?'Partial setup':r.grade==='C'?'Weak — observe':'No setup'}</div>`+
+        `<div style="font-size:10px;color:#444;font-family:DM Mono,monospace">${finalCount}/6 confluences · ${r.grade==='A'?'High probability':r.grade==='B'?'Partial setup':r.grade==='C'?'Weak — observe':'No setup'}</div>`+
       `</div>`+
       // Sweep count + Pattern pills
       `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">`+
