@@ -4841,7 +4841,7 @@ window.deleteRule=async function(id){
     <div class="fg">
       <div class="fld"><label>Date</label><input type="date" id="e-date"></div>
       <div class="fld"><label>Session</label><select id="e-sess"><option>NY</option><option>Asia</option></select></div>
-      <div class="fld"><label>Timeframe</label><select id="e-tf"><option>5M</option><option>15M</option></select></div>
+      <div class="fld"><label>Timeframe</label><select id="e-tf"><option>5M</option><option>15M</option><option>1H</option></select></div>
       <div class="fld"><label>Direction</label><select id="e-dir"><option>Long</option><option>Short</option></select></div>
     </div>
     <div style="height:1px;background:#181818;margin:10px 0"></div>
@@ -4922,7 +4922,7 @@ window.deleteRule=async function(id){
     <div class="fg">
       <div class="fld"><label>Date</label><input type="date" id="ql-date"></div>
       <div class="fld"><label>Session</label><select id="ql-sess"><option>NY</option><option>Asia</option></select></div>
-      <div class="fld"><label>Timeframe</label><select id="ql-tf"><option>5M</option><option>15M</option></select></div>
+      <div class="fld"><label>Timeframe</label><select id="ql-tf"><option>5M</option><option>15M</option><option>1H</option></select></div>
       <div class="fld"><label>Direction</label><select id="ql-dir" onchange="qlCalc()"><option>Long</option><option>Short</option></select></div>
     </div>
     <div class="fg">
@@ -5648,9 +5648,17 @@ ARMED — Sweep has happened. Awaiting candle confirmation (rejection or continu
 STRIKE — Anchor confirmed + Confirmation candle CLOSED. All confluences met. Enter now.
 WAIT — Expansion trap likely. Price may sweep more liquidity. Stay out.
 
+==== MULTI-TIMEFRAME WORKFLOW (ToxikWick_Algo_Logic) ====
+The correct reading order is: 4H (macro direction) → 1H (intermediate bias + HTF liquidity zones) → 15M or 5M (entry confirmation).
+The trader loads each timeframe independently. The data below is from the ${tfLabel} chart.
+${_azTF==='4h'?'This is the MACRO view — read overall direction and major liquidity zones only. Do not look for entries here.':
+  _azTF==='1h'?'This is the HTF BIAS + ENTRY view — identify intermediate direction, key liquidity zones, S/R levels, and entry signals. A clean rejection or continuation candle closing on 1H is a valid entry confirmation. Do not force the trader to drop to 15M if the 1H signal is clear.':
+  _azTF==='15min'?'This is the ENTRY view — look for the sweep confirmation, rejection or continuation candle close, and entry zone. Cross-reference with 1H and 4H bias.':
+  'This is the PRECISION view — use only for fine-tuning entry after 15M confirmation is already clear.'}
+
 ==== CURRENT MARKET DATA ====
 Symbol: XAU/USD (Gold Spot)
-Timeframe: ${tfLabel}
+Chart Analyzed: ${tfLabel}
 Session: ${session} (WAT)
 Current Price: ${last.c.toFixed(2)}
 Recent Swing High (Liquidity Zone ↑): ${swH}
@@ -5696,7 +5704,7 @@ ${historyContext}
           contents:[{parts:[{text:prompt}]}],
           generationConfig:{
             temperature:0.1,
-            maxOutputTokens:1024,
+            maxOutputTokens:2048,
             responseMimeType:'application/json',   // forces clean JSON output — no markdown wrapping
             thinkingConfig:{thinkingBudget:0}      // disables thinking mode — no thought parts in response
           }
@@ -5783,8 +5791,17 @@ function renderAnalysisResult(r){
 
   const metCount=Object.values(r.confluences||{}).filter(v=>v&&v.present).length;
   const trapCol=r.expansion_trap_risk==='High'?'#E05252':r.expansion_trap_risk==='Medium'?'#C9A84C':'#2DB87C';
+  const curTFLabel={'4h':'4H · Macro','1h':'1H · HTF Bias','15min':'15M · Entry','5min':'5M · Precision'}[_azTF]||_azTF;
+  const watHr=((new Date().getUTCHours()+1)%24);
+  const curSession=watHr>=22||watHr<2?'Asia':watHr>=11&&watHr<17?'NY':'Outside Session';
 
   out.innerHTML=
+    // ── TF + Session badge row ──
+    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">`+
+      `<span style="font-size:9px;font-family:DM Mono,monospace;padding:3px 8px;border-radius:3px;background:rgba(201,168,76,.1);color:#C9A84C;border:1px solid rgba(201,168,76,.2);font-weight:700">${curTFLabel}</span>`+
+      `<span style="font-size:9px;font-family:DM Mono,monospace;padding:3px 8px;border-radius:3px;background:rgba(123,143,247,.08);color:#7B8FF7;border:1px solid rgba(123,143,247,.18)">${curSession} Session</span>`+
+      (_azTF==='4h'?`<span style="font-size:9px;font-family:DM Mono,monospace;padding:3px 8px;border-radius:3px;background:rgba(224,82,82,.07);color:#E05252;border:1px solid rgba(224,82,82,.18)">Confirm entry on 1H or 15M</span>`:`<span style="font-size:9px;font-family:DM Mono,monospace;padding:3px 8px;border-radius:3px;background:rgba(45,184,124,.07);color:#2DB87C;border:1px solid rgba(45,184,124,.18)">Entry TF active</span>`)+
+    `</div>`+
     // ── SETUP STATE BANNER (most prominent element) ──
     `<div style="background:${ss.bg};border:1px solid ${ss.border};border-radius:8px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">`+
       `<div style="font-size:22px;flex-shrink:0">${ss.icon}</div>`+
