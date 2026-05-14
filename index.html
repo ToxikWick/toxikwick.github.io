@@ -5365,7 +5365,9 @@ function attachAZInteraction(){
     const lz=findLZNear(clientY);
     _azDS.active=true;
     _azDS.mode='pan';
-    _azDS.startX=x;startPanOffset();
+    _azDS.startX=x;
+    _azDS.startY=y;   // ← was missing — caused tapMoved=true on every touch
+    startPanOffset();
     _azDS.tapMoved=false;
     _azDS.tapTime=Date.now();
     _azDS.draggingLZ=lz||null;
@@ -5374,18 +5376,20 @@ function attachAZInteraction(){
   function panTouchMove(e){
     e.preventDefault();
     const {x,y}=getXY(e);
-    if(Math.abs(x-_azDS.startX)>4||Math.abs(y-(_azDS.startY||0))>4)_azDS.tapMoved=true;
+    // 12px threshold — mobile fingers always drift a few pixels even on a clean tap
+    if(Math.abs(x-_azDS.startX)>12||Math.abs(y-_azDS.startY)>12)_azDS.tapMoved=true;
     if(_azDS.draggingLZ){
       const clientY=e.touches?e.touches[0].clientY:e.clientY;
       dragLZTo(clientY);return;
     }
-    doPan(x);
+    // Only pan if it's definitely a horizontal drag, not a tap
+    if(_azDS.tapMoved)doPan(x);
   }
   function panTouchEnd(e){
     panEl.style.cursor=_azMarkMode?'crosshair':'grab';
     if(_azDS.draggingLZ){_azDS.draggingLZ=null;renderLZPanel();_azDS.active=false;return;}
-    // Tap = no significant move + under 400ms
-    if(!_azDS.tapMoved&&(Date.now()-_azDS.tapTime)<400&&_azMarkMode){
+    // Clean tap: minimal movement + under 500ms
+    if(!_azDS.tapMoved&&(Date.now()-_azDS.tapTime)<500&&_azMarkMode){
       const clientY=e.changedTouches?e.changedTouches[0].clientY:e.clientY;
       const clientX=e.changedTouches?e.changedTouches[0].clientX:e.clientX;
       placeLZAtTap(clientX,clientY);
@@ -5447,7 +5451,7 @@ function initAZWindowListeners(){
 
   window.addEventListener('mousemove',function(e){
     if(!_azDS.active||e.buttons!==1)return;
-    if(Math.abs(e.clientX-_azDS.startX)>4)_azDS.tapMoved=true;
+    if(Math.abs(e.clientX-_azDS.startX)>12||Math.abs(e.clientY-_azDS.startY)>12)_azDS.tapMoved=true;
     if(_azDS.mode==='pan'){
       if(_azDS.draggingLZ){dragLZTo(e.clientY);return;}
       doPan(e.clientX);
