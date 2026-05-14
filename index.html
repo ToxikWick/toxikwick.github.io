@@ -1033,6 +1033,15 @@ select option{background:#181818;color:#E2DDD6}
       </div>
       <!-- Key levels legend -->
       <div id="az-levels-list" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px"></div>
+      <!-- Manual LZ Controls -->
+      <div style="display:flex;gap:5px;margin-top:10px;align-items:center;flex-wrap:wrap">
+        <button id="az-mark-h-btn" onclick="toggleMarkMode('H')" style="font-size:9px;padding:5px 11px;border-radius:4px;border:1px solid #1C1C1C;background:transparent;color:#555;cursor:pointer;font-family:'DM Mono',monospace;font-weight:700;transition:all .2s">📍 H-LZ</button>
+        <button id="az-mark-l-btn" onclick="toggleMarkMode('L')" style="font-size:9px;padding:5px 11px;border-radius:4px;border:1px solid #1C1C1C;background:transparent;color:#555;cursor:pointer;font-family:'DM Mono',monospace;font-weight:700;transition:all .2s">📍 L-LZ</button>
+        <button onclick="clearManualLZs()" style="font-size:9px;padding:5px 10px;border-radius:4px;border:1px solid #1C1C1C;background:transparent;color:#444;cursor:pointer;font-family:'DM Mono',monospace">✕ Clear</button>
+        <span id="az-mark-status" style="font-size:9px;color:#C9A84C;font-family:'DM Mono',monospace;flex:1;text-align:right;line-height:1.4;min-width:0"></span>
+      </div>
+      <!-- LZ Panel — list of marked zones -->
+      <div id="az-lz-panel" style="margin-top:7px;display:none"></div>
     </div>
 
     <!-- AI Confluence Analysis -->
@@ -5003,8 +5012,14 @@ window.saveQuickTrade=async function(){
 let _azTF='1h';
 let _azCandles=[];
 let _azLoading=false;
-let _azViewState={offset:0,visible:50,yStretch:1.0};
+let _azViewState={offset:0,visible:100,yStretch:1.0};
 let _azRafPending=false; // RAF throttle for smooth rendering
+// Manual Liquidity Zones
+let _manualLZs=[];          // [{id, price, type:'H'|'L'}]
+let _azMarkMode=false;      // false | 'H' | 'L'
+let _azLZCounter=0;
+// Y-scale cache — lets interaction code convert pixel→price without re-running renderAZChart
+let _azLastYScale={minP:0,maxP:0,H:310,PAD:{t:20,b:28}};
 
 // WAT = UTC+1. Session windows in WAT hours (24h)
 const AZ_SESSIONS={
@@ -5119,7 +5134,7 @@ function renderAZChart(){
   const wrap=document.getElementById('az-chart-wrap');
   if(!wrap||!_azCandles.length)return;
   const W=wrap.clientWidth||340;
-  const H=240;
+  const H=310;
   const PAD={t:20,b:28,l:6,r:50};
   const cW=W-PAD.l-PAD.r;
   const cH=H-PAD.t-PAD.b;
@@ -5147,6 +5162,9 @@ function renderAZChart(){
 
   const yS=v=>PAD.t+cH-(((v-minP)/totalRange)*cH);
   const xS=i=>PAD.l+(i/n)*cW+(candleW/2);
+
+  // Cache y-scale so touch handlers can convert pixel→price without re-rendering
+  _azLastYScale={minP,maxP,H,PAD};
 
   // ── Y-axis grid + labels ──
   let yLabels='',yGrids='';
@@ -5222,6 +5240,23 @@ function renderAZChart(){
   const lastCol=display[n-1].c>=display[n-1].o?'#2DB87C':'#E05252';
   const lastLine=`<line x1="${PAD.l}" y1="${lastY.toFixed(1)}" x2="${W-PAD.r}" y2="${lastY.toFixed(1)}" stroke="${lastCol}" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.6"/>`;
 
+  // ── Manual Liquidity Zones ──
+  let manualLZsvg='';
+  _manualLZs.forEach(lz=>{
+    const y=yS(lz.price);
+    if(y<PAD.t-10||y>H-PAD.b+10)return; // out of visible range
+    const col=lz.type==='H'?'#E05252':'#2DB87C';
+    const bgCol=lz.type==='H'?'rgba(224,82,82,0.15)':'rgba(45,184,124,0.15)';
+    // Main horizontal line — full width
+    manualLZsvg+=`<line x1="${PAD.l}" y1="${y.toFixed(1)}" x2="${(W-PAD.r).toFixed(1)}" y2="${y.toFixed(1)}" stroke="${col}" stroke-width="1.5"/>`;
+    // Price label background pill on right axis
+    manualLZsvg+=`<rect x="${(W-PAD.r+1).toFixed(1)}" y="${(y-7).toFixed(1)}" width="47" height="13" rx="3" fill="${bgCol}" stroke="${col}" stroke-width="0.7"/>`;
+    manualLZsvg+=`<text x="${(W-PAD.r+4).toFixed(1)}" y="${(y+4).toFixed(1)}" font-size="8" fill="${col}" font-family="DM Mono,monospace" font-weight="700">${lz.price.toFixed(2)}</text>`;
+    // Type chip (H/L) on left of price
+    manualLZsvg+=`<rect x="${(PAD.l).toFixed(1)}" y="${(y-7).toFixed(1)}" width="16" height="13" rx="2" fill="${bgCol}" stroke="${col}" stroke-width="0.7"/>`;
+    manualLZsvg+=`<text x="${(PAD.l+3).toFixed(1)}" y="${(y+4).toFixed(1)}" font-size="8" fill="${col}" font-family="DM Mono,monospace" font-weight="700">${lz.type}</text>`;
+  });
+
   // ── Scroll indicator ──
   const scrollBarW=cW*(vis/totalC);
   const scrollBarX=PAD.l+cW*((totalC-vis-off)/totalC);
@@ -5230,7 +5265,7 @@ function renderAZChart(){
   // ── Render SVG ──
   wrap.innerHTML=
     `<svg id="az-svg" viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block;touch-action:none">`+
-    yGrids+levelLines+candles+lastLine+yLabels+xLabels+scrollBar+
+    yGrids+levelLines+candles+lastLine+manualLZsvg+yLabels+xLabels+scrollBar+
     `</svg>`+
     // Chart body overlay — pan left/right
     `<div id="az-pan-overlay" style="position:absolute;top:0;left:0;right:${PAD.r}px;bottom:${PAD.b}px;cursor:grab"></div>`+
@@ -5252,13 +5287,43 @@ function attachAZInteraction(){
 
   // Shared state
   let startX=0,startY=0,startOffset=0,startVisible=0,startYStretch=0;
+  let tapStartX=0,tapStartY=0,tapMoved=false;
+  let draggingLZ=null;
 
   function getXY(e){
     if(e.touches)return{x:e.touches[0].clientX,y:e.touches[0].clientY};
     return{x:e.clientX,y:e.clientY};
   }
 
-  // RAF throttle — smooth rendering, prevents laggy redraws on every pixel
+  // Convert client Y pixel position to chart price
+  function pixelToPrice(clientY){
+    const wrap=document.getElementById('az-chart-wrap');
+    if(!wrap)return null;
+    const rect=wrap.getBoundingClientRect();
+    const relY=clientY-rect.top;
+    const {minP,maxP,H,PAD}=_azLastYScale;
+    const cH=H-PAD.t-PAD.b;
+    const totalRange=maxP-minP||1;
+    return minP+(1-(relY-PAD.t)/cH)*totalRange;
+  }
+
+  // Find a manual LZ line within touch threshold of clientY
+  function findLZNear(clientY){
+    const wrap=document.getElementById('az-chart-wrap');
+    if(!wrap||!_manualLZs.length)return null;
+    const rect=wrap.getBoundingClientRect();
+    const relY=clientY-rect.top;
+    const {minP,maxP,H,PAD}=_azLastYScale;
+    const cH=H-PAD.t-PAD.b;
+    const totalRange=maxP-minP||1;
+    for(const lz of _manualLZs){
+      const lzY=PAD.t+cH*(1-(lz.price-minP)/totalRange);
+      if(Math.abs(relY-lzY)<=16)return lz;
+    }
+    return null;
+  }
+
+  // RAF throttle — smooth rendering
   function scheduleRender(){
     if(!_azRafPending){
       _azRafPending=true;
@@ -5269,27 +5334,62 @@ function attachAZInteraction(){
   // ── PAN (horizontal scroll) ──
   function panStart(e){
     e.preventDefault();
-    const {x}=getXY(e);
-    startX=x;startOffset=_azViewState.offset;
-    panEl.style.cursor='grabbing';
+    const {x,y}=getXY(e);
+    tapStartX=x;tapStartY=y;tapMoved=false;
+    // Check if touching near an existing LZ line — if so, drag that line
+    const touchClientY=e.touches?e.touches[0].clientY:e.clientY;
+    draggingLZ=findLZNear(touchClientY);
+    if(!draggingLZ){
+      startX=x;startOffset=_azViewState.offset;
+      panEl.style.cursor='grabbing';
+    }else{
+      panEl.style.cursor='ns-resize';
+    }
   }
+
   function panMove(e){
     e.preventDefault();
-    const {x}=getXY(e);
-    // Drag RIGHT → older candles (positive offset). Natural map-style scrolling.
+    const {x,y}=getXY(e);
+    if(Math.abs(x-tapStartX)>5||Math.abs(y-tapStartY)>5)tapMoved=true;
+
+    if(draggingLZ){
+      // Drag existing LZ line vertically
+      const clientY=e.touches?e.touches[0].clientY:e.clientY;
+      const price=pixelToPrice(clientY);
+      if(price!==null){
+        draggingLZ.price=Math.round(price*100)/100;
+        scheduleRender();
+        renderLZPanel();
+      }
+      return;
+    }
+
+    // Normal horizontal pan
+    // Drag LEFT (negative dx) = go back in time (increase offset = older candles)
     const dx=x-startX;
-    const wrap=document.getElementById('az-chart-wrap');
-    const W=wrap?wrap.clientWidth:340;
+    const wrapEl=document.getElementById('az-chart-wrap');
+    const W=wrapEl?wrapEl.clientWidth:340;
     const pxPerCandle=(W-6-50)/Math.max(1,_azViewState.visible);
-    const candlesDelta=Math.round(dx/pxPerCandle);
+    const candlesDelta=Math.round(-dx/pxPerCandle); // negative dx → positive delta → older candles
     const newOffset=Math.max(0,Math.min(startOffset+candlesDelta,_azCandles.length-_azViewState.visible));
     if(newOffset!==_azViewState.offset){_azViewState.offset=newOffset;scheduleRender();}
   }
-  function panEnd(){panEl.style.cursor='grab';}
+
+  function panEnd(e){
+    panEl.style.cursor='grab';
+    if(draggingLZ){draggingLZ=null;renderLZPanel();return;}
+    // Clean tap (no drag movement) in mark mode → place LZ at tapped price
+    if(!tapMoved&&_azMarkMode){
+      const clientY=e.changedTouches?e.changedTouches[0].clientY:e.clientY;
+      const price=pixelToPrice(clientY);
+      if(price!==null){addManualLZ(price,_azMarkMode);}
+    }
+    draggingLZ=null;
+  }
 
   panEl.addEventListener('mousedown',panStart,{passive:false});
   window.addEventListener('mousemove',function pmm(e){if(e.buttons===1&&document.getElementById('az-pan-overlay'))panMove(e);},{passive:false});
-  window.addEventListener('mouseup',panEnd,{passive:false});
+  window.addEventListener('mouseup',function pmu(e){if(document.getElementById('az-pan-overlay'))panEnd(e);},{passive:false});
   panEl.addEventListener('touchstart',panStart,{passive:false});
   panEl.addEventListener('touchmove',panMove,{passive:false});
   panEl.addEventListener('touchend',panEnd,{passive:false});
@@ -5322,10 +5422,10 @@ function attachAZInteraction(){
   function xMove(e){
     e.preventDefault();
     const {x}=getXY(e);
-    // Drag left = see more candles (zoom out). Drag right = fewer candles (zoom in).
+    // Drag left = see more candles (zoom out). Drag right = fewer (zoom in).
     const dx=startX-x;
     const delta=Math.round(dx*0.15);
-    const newVis=Math.max(5,Math.min(startVisible+delta,_azCandles.length));
+    const newVis=Math.max(10,Math.min(startVisible+delta,_azCandles.length));
     if(newVis!==_azViewState.visible){_azViewState.visible=newVis;scheduleRender();}
   }
   xEl.addEventListener('mousedown',xStart,{passive:false});
@@ -5342,91 +5442,12 @@ function niceNum(v){
 
 function detectKeyLevels(candles,minP,maxP){
   const levels=[];
+  // Auto RN lines removed — mark levels manually using the LZ tools below the chart
+  // Auto swing LZ detection removed — manually identify and mark LZs for accurate AI analysis
   const last=candles[candles.length-1].c;
   const n=candles.length;
 
-  // === ROUND NUMBERS — Tiered, dashed gold lines ===
-  const kBase=Math.round(last/1000)*1000;
-  for(let d=-2000;d<=2000;d+=1000){
-    const r=kBase+d;
-    if(r>minP&&r<maxP)
-      levels.push({price:r,label:r.toFixed(0),col:'rgba(201,168,76,.75)',w:1.2,dash:'6,3',type:'round_k',startFrac:0});
-  }
-  const hBase=Math.round(last/100)*100;
-  for(let d=-500;d<=500;d+=100){
-    const r=hBase+d;
-    if(r%1000===0)continue;
-    if(r>minP&&r<maxP)
-      levels.push({price:r,label:r.toFixed(0),col:'rgba(201,168,76,.38)',w:0.8,dash:'4,3',type:'round_h',startFrac:0});
-  }
-
-  // === LIQUIDITY ZONES — solid red, anchored from candle that formed them ===
-  // Find top 2 swing highs and top 2 swing lows from visible candles
-  // Each level carries the candle index so we can anchor the line start
-  const lookback=Math.min(n-2,50);
-  const swing=candles.slice(-lookback-2,-2);
-
-  // Build peak list: local maxima (high > neighbours)
-  const peaks=[];
-  for(let i=1;i<swing.length-1;i++){
-    if(swing[i].h>=swing[i-1].h&&swing[i].h>=swing[i+1].h)
-      peaks.push({price:swing[i].h,idx:n-lookback-2+i});
-  }
-  // Also include absolute highest if not already captured
-  const absH=Math.max(...swing.map(c=>c.h));
-  const absHIdx=swing.findIndex(c=>c.h===absH);
-  if(absHIdx>=0&&!peaks.find(p=>Math.abs(p.price-absH)<0.5))
-    peaks.push({price:absH,idx:n-lookback-2+absHIdx});
-
-  // Build trough list: local minima
-  const troughs=[];
-  for(let i=1;i<swing.length-1;i++){
-    if(swing[i].l<=swing[i-1].l&&swing[i].l<=swing[i+1].l)
-      troughs.push({price:swing[i].l,idx:n-lookback-2+i});
-  }
-  const absL=Math.min(...swing.map(c=>c.l));
-  const absLIdx=swing.findIndex(c=>c.l===absL);
-  if(absLIdx>=0&&!troughs.find(t=>Math.abs(t.price-absL)<0.5))
-    troughs.push({price:absL,idx:n-lookback-2+absLIdx});
-
-  // Deduplicate: remove peaks within 3pts of each other (keep highest)
-  const dedupe=(arr,key,keep)=>{
-    arr.sort((a,b)=>keep==='max'?b.price-a.price:a.price-b.price);
-    const out=[];
-    for(const item of arr){
-      if(!out.find(x=>Math.abs(x.price-item.price)<3))out.push(item);
-      if(out.length>=2)break;
-    }
-    return out;
-  };
-
-  const topPeaks=dedupe(peaks,'price','max');
-  const topTroughs=dedupe(troughs,'price','min');
-
-  // Check equal highs — if two peaks within 1.5pts → mark as equal high
-  const hasEqH=topPeaks.length>=2&&Math.abs(topPeaks[0].price-topPeaks[1].price)<1.5;
-  const hasEqL=topTroughs.length>=2&&Math.abs(topTroughs[0].price-topTroughs[1].price)<1.5;
-
-  // Push LZ levels — all solid red (#E05252), anchored from the candle that formed them
-  const LZ_COL='rgba(224,82,82,0.85)';
-  const LZ_W=1.1;
-
-  topPeaks.forEach((pk,i)=>{
-    if(pk.price<=minP||pk.price>=maxP)return;
-    if(Math.abs(pk.price-last)<0.5)return;
-    const startFrac=pk.idx/n; // fractional position in full candle array
-    const label=pk.price.toFixed(2)+(hasEqH&&i===0?' EqH':'');
-    levels.push({price:pk.price,label,col:LZ_COL,w:LZ_W,dash:'none',type:'lz_high',startFrac});
-  });
-
-  topTroughs.forEach((tr,i)=>{
-    if(tr.price<=minP||tr.price>=maxP)return;
-    if(Math.abs(tr.price-last)<0.5)return;
-    const startFrac=tr.idx/n;
-    const label=tr.price.toFixed(2)+(hasEqL&&i===0?' EqL':'');
-    levels.push({price:tr.price,label,col:LZ_COL,w:LZ_W,dash:'none',type:'lz_low',startFrac});
-  });
-
+  // Return empty — all level marking is manual
   return levels;
 }
 
@@ -5579,8 +5600,12 @@ async function runAIAnalysis(){
   const out=document.getElementById('az-analysis-output');
   btn.disabled=true;btn.textContent='Analyzing...';
   out.innerHTML='<div class="az-thinking"><div class="az-dot"></div><div class="az-dot"></div><div class="az-dot"></div><span>Gemini is analyzing the candles...</span></div>';
-  // Build OHLC summary — last 25 candles with WAT timestamp so AI references by price+time not number
-  const recent=_azCandles.slice(-25);
+  // Use the currently visible candle window (same as on screen) — capped at 100 for the AI
+  const _aiVis=Math.min(100,_azViewState.visible,_azCandles.length);
+  const _aiOff=Math.max(0,_azViewState.offset);
+  const _aiEnd=_azCandles.length-_aiOff;
+  const _aiStart=Math.max(0,_aiEnd-_aiVis);
+  const recent=_azCandles.slice(_aiStart,_aiEnd>0?_aiEnd:undefined);
   const last=recent[recent.length-1];
   const first=recent[0];
   const watH=((new Date().getUTCHours()+1)%24);
@@ -5623,6 +5648,16 @@ async function runAIAnalysis(){
         return `${t.trade_date||'?'} | ${t.session||'?'} | ${t.direction||'?'} | ${t.result||'?'} | P&L: ${parseFloat(t.pnl||0)>=0?'+':''}${parseFloat(t.pnl||0).toFixed(2)} | Confluences: ${conf||'not recorded'}`;
       }).join('\n')
     :'No trade history yet — this will improve your analysis as you log more trades.';
+
+  // Manual LZ context — pass trader-identified zones to AI
+  const manualLZContext=_manualLZs.length>0
+    ?'\n==== TRADER-IDENTIFIED LIQUIDITY ZONES ====\n'+
+      'The trader has manually marked these zones on the chart. Use ONLY these as the primary liquidity zones — they override your own swing detection:\n'+
+      _manualLZs.filter(lz=>lz.type==='H').sort((a,b)=>b.price-a.price).map(lz=>'H-LZ (sell-side / resistance): '+lz.price.toFixed(2)).join('\n')+
+      (_manualLZs.some(lz=>lz.type==='H')&&_manualLZs.some(lz=>lz.type==='L')?'\n':'')+
+      _manualLZs.filter(lz=>lz.type==='L').sort((a,b)=>b.price-a.price).map(lz=>'L-LZ (buy-side / support): '+lz.price.toFixed(2)).join('\n')+
+      '\nEvaluate whether price has swept any of these zones and whether a valid reversal signal has followed.'
+    :'\n==== LIQUIDITY ZONES ====\nNo zones manually marked by the trader. Use the swing high/low data ('+swH+' / '+swL+') as reference only — note that auto-detection may be imprecise.';
 
   const prompt=`You are an expert market analyst specializing in institutional algorithm footprint analysis on XAUUSD. You do NOT use or reference SMC. You follow the ToxikWick_Algo_Logic — tracking how big banks and institutional algorithms execute orders, sweep liquidity, and reverse price.
 
@@ -5679,11 +5714,12 @@ Symbol: XAU/USD (Gold Spot)
 Chart Analyzed: ${tfLabel}
 Session: ${session} (WAT)
 Current Price: ${last.c.toFixed(2)}
-Recent Swing High (Liquidity Zone ↑): ${swH}
-Recent Swing Low (Liquidity Zone ↓): ${swL}
+Recent Swing High (reference): ${swH}
+Recent Swing Low (reference): ${swL}
 Round Numbers Near Price: ${nearRoundsText}
+${manualLZContext}
 
-LAST 25 CANDLES — each labeled with WAT time (oldest first, most recent at bottom).
+LAST ${recent.length} CANDLES — each labeled with WAT time (oldest first, most recent at bottom).
 IMPORTANT: When referencing candles in your analysis, ALWAYS use the WAT time and price value — e.g. "the bearish candle at 13:00 that closed at 4698.20" or "the high at 4726.44 formed at 06:00". NEVER say "candle 4" or "candle 10" — those numbers mean nothing on the visible chart.
 ${ohlcSummary}
 
@@ -5905,6 +5941,97 @@ function renderAnalysisResult(r){
       (r.missing?`<div style="font-size:10px;color:#C9A84C;margin-top:8px;padding-top:8px;border-top:1px solid #161616;font-family:DM Mono,monospace">⚠ To trigger STRIKE: ${r.missing}</div>`:'')+
     `</div>`;
 }
+
+// ── Manual Liquidity Zone Management ──────────────────────────────────────────
+
+window.toggleMarkMode=function(type){
+  _azMarkMode=(_azMarkMode===type)?false:type;
+  const hBtn=document.getElementById('az-mark-h-btn');
+  const lBtn=document.getElementById('az-mark-l-btn');
+  const status=document.getElementById('az-mark-status');
+  const panEl=document.getElementById('az-pan-overlay');
+  // Style H button
+  if(hBtn){
+    hBtn.style.background=_azMarkMode==='H'?'rgba(224,82,82,.2)':'transparent';
+    hBtn.style.borderColor=_azMarkMode==='H'?'rgba(224,82,82,.55)':'#1C1C1C';
+    hBtn.style.color=_azMarkMode==='H'?'#E05252':'#555';
+  }
+  // Style L button
+  if(lBtn){
+    lBtn.style.background=_azMarkMode==='L'?'rgba(45,184,124,.2)':'transparent';
+    lBtn.style.borderColor=_azMarkMode==='L'?'rgba(45,184,124,.55)':'#1C1C1C';
+    lBtn.style.color=_azMarkMode==='L'?'#2DB87C':'#555';
+  }
+  // Status hint
+  if(status){
+    status.textContent=_azMarkMode
+      ?'Tap chart to mark '+(_azMarkMode==='H'?'resistance (H)':'support (L)')+' zone · drag line to adjust'
+      :'';
+  }
+  // Change cursor on pan overlay
+  if(panEl){panEl.style.cursor=_azMarkMode?'crosshair':'grab';}
+};
+
+function addManualLZ(price,type){
+  _azLZCounter++;
+  _manualLZs.push({id:_azLZCounter,price:Math.round(price*100)/100,type});
+  renderAZChart();
+  renderLZPanel();
+}
+
+window.removeManualLZ=function(id){
+  _manualLZs=_manualLZs.filter(lz=>lz.id!==id);
+  renderAZChart();
+  renderLZPanel();
+};
+
+window.clearManualLZs=function(){
+  if(!_manualLZs.length)return;
+  _manualLZs=[];
+  _azMarkMode=false;
+  // Reset button styles
+  const hBtn=document.getElementById('az-mark-h-btn');
+  const lBtn=document.getElementById('az-mark-l-btn');
+  const status=document.getElementById('az-mark-status');
+  if(hBtn){hBtn.style.background='transparent';hBtn.style.borderColor='#1C1C1C';hBtn.style.color='#555';}
+  if(lBtn){lBtn.style.background='transparent';lBtn.style.borderColor='#1C1C1C';lBtn.style.color='#555';}
+  if(status)status.textContent='';
+  renderAZChart();
+  renderLZPanel();
+};
+
+window.adjustLZPrice=function(id,delta){
+  const lz=_manualLZs.find(l=>l.id===id);
+  if(!lz)return;
+  lz.price=Math.round((lz.price+delta)*100)/100;
+  renderAZChart();
+  renderLZPanel();
+};
+
+function renderLZPanel(){
+  const el=document.getElementById('az-lz-panel');
+  if(!el)return;
+  if(!_manualLZs.length){el.style.display='none';return;}
+  el.style.display='block';
+  // Sort: H-LZs (higher price) first, then L-LZs
+  const sorted=[..._manualLZs].sort((a,b)=>b.price-a.price);
+  el.innerHTML=
+    `<div style="font-size:8px;color:#333;letter-spacing:.1em;text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:6px">Marked Zones · drag line on chart or use ▲▼ to adjust</div>`+
+    sorted.map(lz=>{
+      const col=lz.type==='H'?'#E05252':'#2DB87C';
+      const bg=lz.type==='H'?'rgba(224,82,82,.07)':'rgba(45,184,124,.07)';
+      const bdr=lz.type==='H'?'rgba(224,82,82,.22)':'rgba(45,184,124,.22)';
+      return`<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:${bg};border:1px solid ${bdr};border-radius:5px;margin-bottom:4px">`+
+        `<span style="font-size:9px;font-weight:700;color:${col};font-family:'DM Mono',monospace;padding:1px 6px;background:${bg};border:1px solid ${bdr};border-radius:3px;flex-shrink:0">${lz.type}-LZ</span>`+
+        `<span style="font-size:12px;font-weight:700;color:${col};font-family:'DM Mono',monospace;flex:1">${lz.price.toFixed(2)}</span>`+
+        `<button onclick="adjustLZPrice(${lz.id},0.5)" style="background:#111;border:1px solid #222;border-radius:3px;color:#666;font-size:10px;padding:3px 7px;cursor:pointer;font-family:'DM Mono',monospace">+</button>`+
+        `<button onclick="adjustLZPrice(${lz.id},-0.5)" style="background:#111;border:1px solid #222;border-radius:3px;color:#666;font-size:10px;padding:3px 7px;cursor:pointer;font-family:'DM Mono',monospace">−</button>`+
+        `<button onclick="removeManualLZ(${lz.id})" style="background:transparent;border:1px solid rgba(224,82,82,.25);border-radius:3px;color:#E05252;font-size:10px;padding:3px 8px;cursor:pointer;font-family:'DM Mono',monospace">✕</button>`+
+      `</div>`;
+    }).join('');
+}
+
+// ── END Manual LZ Management ───────────────────────────────────────────────────
 
 // ── Init ──
 function initAnalyzer(){
