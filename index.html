@@ -1031,17 +1031,26 @@ select option{background:#181818;color:#E2DDD6}
       <div class="az-chart-wrap" id="az-chart-wrap">
         <div class="az-chart-loading" id="az-chart-loading">Loading candles...</div>
       </div>
-      <!-- Key levels legend -->
+      <!-- Key levels legend (kept for future use, hidden when empty) -->
       <div id="az-levels-list" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px"></div>
-      <!-- Manual LZ Controls -->
-      <div style="display:flex;gap:5px;margin-top:10px;align-items:center;flex-wrap:wrap">
-        <button id="az-mark-h-btn" onclick="toggleMarkMode('H')" style="font-size:9px;padding:5px 11px;border-radius:4px;border:1px solid #1C1C1C;background:transparent;color:#555;cursor:pointer;font-family:'DM Mono',monospace;font-weight:700;transition:all .2s">📍 H-LZ</button>
-        <button id="az-mark-l-btn" onclick="toggleMarkMode('L')" style="font-size:9px;padding:5px 11px;border-radius:4px;border:1px solid #1C1C1C;background:transparent;color:#555;cursor:pointer;font-family:'DM Mono',monospace;font-weight:700;transition:all .2s">📍 L-LZ</button>
-        <button onclick="clearManualLZs()" style="font-size:9px;padding:5px 10px;border-radius:4px;border:1px solid #1C1C1C;background:transparent;color:#444;cursor:pointer;font-family:'DM Mono',monospace">✕ Clear</button>
-        <span id="az-mark-status" style="font-size:9px;color:#C9A84C;font-family:'DM Mono',monospace;flex:1;text-align:right;line-height:1.4;min-width:0"></span>
+      <!-- LZ Mark Controls -->
+      <div style="display:flex;align-items:center;gap:6px;margin-top:10px;flex-wrap:wrap">
+        <button id="az-mark-h-btn" onclick="toggleMarkMode('H')"
+          style="font-size:10px;font-weight:700;padding:6px 14px;border-radius:5px;border:1px solid #1C1C1C;background:transparent;color:#555;cursor:pointer;font-family:'DM Mono',monospace;transition:all .2s">
+          📍 H-LZ
+        </button>
+        <button id="az-mark-l-btn" onclick="toggleMarkMode('L')"
+          style="font-size:10px;font-weight:700;padding:6px 14px;border-radius:5px;border:1px solid #1C1C1C;background:transparent;color:#555;cursor:pointer;font-family:'DM Mono',monospace;transition:all .2s">
+          📍 L-LZ
+        </button>
+        <button onclick="clearManualLZs()"
+          style="font-size:10px;padding:6px 12px;border-radius:5px;border:1px solid #1C1C1C;background:transparent;color:#444;cursor:pointer;font-family:'DM Mono',monospace">
+          ✕ Clear All
+        </button>
+        <span id="az-mode-hint" style="font-size:9px;font-family:'DM Mono',monospace;color:#444;flex:1;text-align:right"></span>
       </div>
-      <!-- LZ Panel — list of marked zones -->
-      <div id="az-lz-panel" style="margin-top:7px;display:none"></div>
+      <!-- Marked zones list -->
+      <div id="az-lz-panel" style="margin-top:8px"></div>
     </div>
 
     <!-- AI Confluence Analysis -->
@@ -5012,14 +5021,29 @@ window.saveQuickTrade=async function(){
 let _azTF='1h';
 let _azCandles=[];
 let _azLoading=false;
-let _azViewState={offset:0,visible:100,yStretch:1.0};
-let _azRafPending=false; // RAF throttle for smooth rendering
-// Manual Liquidity Zones
-let _manualLZs=[];          // [{id, price, type:'H'|'L'}]
-let _azMarkMode=false;      // false | 'H' | 'L'
+let _azViewState={offset:0,visible:60,yStretch:1.0};
+let _azRafPending=false;
+
+// ── Manual LZ state ──
+let _manualLZs=[];        // [{id,price,type:'H'|'L',anchorIdx:Number}]
+let _azMarkMode=false;    // false | 'H' | 'L'
 let _azLZCounter=0;
-// Y-scale cache — lets interaction code convert pixel→price without re-running renderAZChart
-let _azLastYScale={minP:0,maxP:0,H:310,PAD:{t:20,b:28}};
+
+// ── Y-scale cache — lets interaction/tap code convert pixel→price ──
+let _azYScale={minP:0,maxP:0,H:310,PAD:{t:20,b:28,l:6,r:50},cW:284,cH:262,n:1,startIdx:0};
+
+// ── Interaction state — MODULE LEVEL so all listeners share exactly one copy ──
+// Core fix: no per-closure state → no infinite LZ loop on re-render
+let _azDS={
+  active:false,
+  mode:null,          // 'pan'|'yscale'|'xscale'
+  startX:0,startY:0,
+  startOffset:0,startVisible:0,startYStretch:0,
+  tapMoved:false,
+  tapTime:0,
+  draggingLZ:null
+};
+let _azWinBound=false; // window-level listeners attached exactly once
 
 // WAT = UTC+1. Session windows in WAT hours (24h)
 const AZ_SESSIONS={
@@ -5101,7 +5125,7 @@ async function loadAnalyzerChart(){
       c:parseFloat(c.close),
     })).filter(c=>{const day=c.t.getDay();return day!==0&&day!==6;});
     // Reset view state for fresh load — show last 100, 500 available to scroll left
-    _azViewState={offset:0,visible:100,yStretch:1.0};
+    _azViewState={offset:0,visible:60,yStretch:1.0};
     renderAZChart();
     if(cc)cc.style.display='block';
     if(ac)ac.style.display='block';
@@ -5141,7 +5165,7 @@ function renderAZChart(){
 
   // ── View state: which candles to show ──
   const totalC=_azCandles.length;
-  const vis=Math.max(5,Math.min(_azViewState.visible,totalC));
+  const vis=Math.max(10,Math.min(_azViewState.visible,totalC));
   const off=Math.max(0,Math.min(_azViewState.offset,totalC-vis));
   const endIdx=totalC-off;
   const startIdx=Math.max(0,endIdx-vis);
@@ -5149,7 +5173,10 @@ function renderAZChart(){
   const n=display.length;
   if(!n)return;
 
-  const candleW=Math.max(2,Math.floor(cW/n)-1);
+  // Breathing room: reserve 8% of chart width empty on the right when at offset=0
+  // This prevents candles from being stuck flush against the right edge
+  const rightBreath=off===0?Math.floor(n*0.08):0;
+  const candleW=Math.max(2,Math.floor(cW/(n+rightBreath))-1);
 
   // ── Price range with yStretch ──
   const allH=display.map(c=>c.h),allL=display.map(c=>c.l);
@@ -5163,8 +5190,8 @@ function renderAZChart(){
   const yS=v=>PAD.t+cH-(((v-minP)/totalRange)*cH);
   const xS=i=>PAD.l+(i/n)*cW+(candleW/2);
 
-  // Cache y-scale so touch handlers can convert pixel→price without re-rendering
-  _azLastYScale={minP,maxP,H,PAD};
+  // Update y-scale cache so tap handlers can convert pixel→price/candle without re-rendering
+  _azYScale={minP,maxP,H,PAD,cW,cH,n,startIdx};
 
   // ── Y-axis grid + labels ──
   let yLabels='',yGrids='';
@@ -5240,21 +5267,29 @@ function renderAZChart(){
   const lastCol=display[n-1].c>=display[n-1].o?'#2DB87C':'#E05252';
   const lastLine=`<line x1="${PAD.l}" y1="${lastY.toFixed(1)}" x2="${W-PAD.r}" y2="${lastY.toFixed(1)}" stroke="${lastCol}" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.6"/>`;
 
-  // ── Manual Liquidity Zones ──
+  // ── Manual Liquidity Zones — anchored lines ──
+  // Line starts from the candle where the zone was tapped, extends to right axis
   let manualLZsvg='';
   _manualLZs.forEach(lz=>{
     const y=yS(lz.price);
-    if(y<PAD.t-10||y>H-PAD.b+10)return; // out of visible range
-    const col=lz.type==='H'?'#E05252':'#2DB87C';
-    const bgCol=lz.type==='H'?'rgba(224,82,82,0.15)':'rgba(45,184,124,0.15)';
-    // Main horizontal line — full width
-    manualLZsvg+=`<line x1="${PAD.l}" y1="${y.toFixed(1)}" x2="${(W-PAD.r).toFixed(1)}" y2="${y.toFixed(1)}" stroke="${col}" stroke-width="1.5"/>`;
-    // Price label background pill on right axis
-    manualLZsvg+=`<rect x="${(W-PAD.r+1).toFixed(1)}" y="${(y-7).toFixed(1)}" width="47" height="13" rx="3" fill="${bgCol}" stroke="${col}" stroke-width="0.7"/>`;
-    manualLZsvg+=`<text x="${(W-PAD.r+4).toFixed(1)}" y="${(y+4).toFixed(1)}" font-size="8" fill="${col}" font-family="DM Mono,monospace" font-weight="700">${lz.price.toFixed(2)}</text>`;
-    // Type chip (H/L) on left of price
-    manualLZsvg+=`<rect x="${(PAD.l).toFixed(1)}" y="${(y-7).toFixed(1)}" width="16" height="13" rx="2" fill="${bgCol}" stroke="${col}" stroke-width="0.7"/>`;
-    manualLZsvg+=`<text x="${(PAD.l+3).toFixed(1)}" y="${(y+4).toFixed(1)}" font-size="8" fill="${col}" font-family="DM Mono,monospace" font-weight="700">${lz.type}</text>`;
+    if(y<PAD.t-2||y>H-PAD.b+2)return;
+    const col=lz.type==='H'?'#E05252':'#F0A0A0';
+    const bgCol=lz.type==='H'?'rgba(224,82,82,0.15)':'rgba(224,82,82,0.08)';
+    const bdrCol=lz.type==='H'?'rgba(224,82,82,0.6)':'rgba(224,82,82,0.35)';
+    // Anchor x: the candle where zone was drawn — if scrolled out of view, start from PAD.l
+    let x1=PAD.l;
+    const relIdx=lz.anchorIdx-startIdx;
+    if(relIdx>0&&relIdx<n) x1=PAD.l+(relIdx/n)*cW;
+    else if(relIdx>=n) return; // anchor is to the right of view (shouldn't happen normally)
+    const x2=W-PAD.r;
+    // Zone line
+    manualLZsvg+=`<line x1="${x1.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${col}" stroke-width="1.6"/>`;
+    // Price label pill on right axis
+    manualLZsvg+=`<rect x="${(x2+1).toFixed(1)}" y="${(y-7).toFixed(1)}" width="47" height="14" rx="2.5" fill="${bgCol}" stroke="${bdrCol}" stroke-width="0.8"/>`;
+    manualLZsvg+=`<text x="${(x2+4.5).toFixed(1)}" y="${(y+4).toFixed(1)}" font-size="7.5" fill="${col}" font-family="DM Mono,monospace" font-weight="700">${lz.price.toFixed(2)}</text>`;
+    // Type tag at anchor point
+    manualLZsvg+=`<rect x="${(x1).toFixed(1)}" y="${(y-7).toFixed(1)}" width="15" height="14" rx="2" fill="${bgCol}" stroke="${bdrCol}" stroke-width="0.8"/>`;
+    manualLZsvg+=`<text x="${(x1+2.5).toFixed(1)}" y="${(y+4).toFixed(1)}" font-size="7.5" fill="${col}" font-family="DM Mono,monospace" font-weight="700">${lz.type}</text>`;
   });
 
   // ── Scroll indicator ──
@@ -5262,176 +5297,245 @@ function renderAZChart(){
   const scrollBarX=PAD.l+cW*((totalC-vis-off)/totalC);
   const scrollBar=off>0?`<rect x="${scrollBarX.toFixed(1)}" y="${H-5}" width="${scrollBarW.toFixed(1)}" height="3" rx="1.5" fill="#2A2A2A"/>`:'' ;
 
-  // ── Render SVG ──
+  // ── Render SVG — LZ lines drawn on top of candles ──
   wrap.innerHTML=
     `<svg id="az-svg" viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block;touch-action:none">`+
     yGrids+levelLines+candles+lastLine+manualLZsvg+yLabels+xLabels+scrollBar+
     `</svg>`+
-    // Chart body overlay — pan left/right
-    `<div id="az-pan-overlay" style="position:absolute;top:0;left:0;right:${PAD.r}px;bottom:${PAD.b}px;cursor:grab"></div>`+
-    // Price axis overlay — y-stretch
+    `<div id="az-pan-overlay" style="position:absolute;top:0;left:0;right:${PAD.r}px;bottom:${PAD.b}px;cursor:${_azMarkMode?'crosshair':'grab'}"></div>`+
     `<div id="az-yscale-overlay" style="position:absolute;top:0;right:0;width:${PAD.r}px;bottom:${PAD.b}px;cursor:ns-resize"></div>`+
-    // Time axis overlay — x-stretch (zoom)
     `<div id="az-xscale-overlay" style="position:absolute;bottom:0;left:0;right:${PAD.r}px;height:${PAD.b}px;cursor:ew-resize"></div>`;
 
+  // Attach element-level touch listeners (safe to re-attach — element is replaced each render)
   attachAZInteraction();
+  // Attach window-level listeners ONCE only (prevents the infinite-LZ loop bug)
+  initAZWindowListeners();
   renderLevelLegend(levels);
 }
 
-// ── Touch/Mouse interaction ──
+// ── RAF scheduler ──
+function _azScheduleRender(){
+  if(!_azRafPending){
+    _azRafPending=true;
+    requestAnimationFrame(()=>{renderAZChart();_azRafPending=false;});
+  }
+}
+
+// ── Pan / Scale helpers — MODULE LEVEL so both touch and mouse handlers can call them ──
+function doPan(x){
+  const dx=x-_azDS.startX;
+  const wrap=document.getElementById('az-chart-wrap');
+  const W=wrap?wrap.clientWidth:340;
+  const pxPerCandle=(W-56)/Math.max(1,_azViewState.visible);
+  // Drag RIGHT = go back in time (older candles, higher offset) — TradingView standard
+  const delta=Math.round(dx/pxPerCandle);
+  const maxOff=Math.max(0,_azCandles.length-_azViewState.visible);
+  const newOff=Math.max(0,Math.min(_azDS.startOffset+delta,maxOff));
+  if(newOff!==_azViewState.offset){_azViewState.offset=newOff;_azScheduleRender();}
+}
+function doYScale(y){
+  const dy=_azDS.startY-y;
+  const factor=1+dy*0.005;
+  const newS=Math.max(0.3,Math.min(_azDS.startYStretch*factor,8));
+  if(Math.abs(newS-_azViewState.yStretch)>0.01){_azViewState.yStretch=newS;_azScheduleRender();}
+}
+function doXScale(x){
+  const dx=_azDS.startX-x;
+  const delta=Math.round(dx*0.15);
+  const newVis=Math.max(10,Math.min(_azDS.startVisible+delta,_azCandles.length));
+  if(newVis!==_azViewState.visible){_azViewState.visible=newVis;_azScheduleRender();}
+}
+
+// ── Element-level interaction — re-attached each render (safe, element is rebuilt) ──
 function attachAZInteraction(){
   const panEl=document.getElementById('az-pan-overlay');
   const yEl=document.getElementById('az-yscale-overlay');
   const xEl=document.getElementById('az-xscale-overlay');
   if(!panEl||!yEl||!xEl)return;
 
-  // Shared state
-  let startX=0,startY=0,startOffset=0,startVisible=0,startYStretch=0;
-  let tapStartX=0,tapStartY=0,tapMoved=false;
-  let draggingLZ=null;
-
   function getXY(e){
-    if(e.touches)return{x:e.touches[0].clientX,y:e.touches[0].clientY};
-    return{x:e.clientX,y:e.clientY};
+    return e.touches?{x:e.touches[0].clientX,y:e.touches[0].clientY}:{x:e.clientX,y:e.clientY};
   }
 
-  // Convert client Y pixel position to chart price
-  function pixelToPrice(clientY){
-    const wrap=document.getElementById('az-chart-wrap');
-    if(!wrap)return null;
-    const rect=wrap.getBoundingClientRect();
-    const relY=clientY-rect.top;
-    const {minP,maxP,H,PAD}=_azLastYScale;
-    const cH=H-PAD.t-PAD.b;
-    const totalRange=maxP-minP||1;
-    return minP+(1-(relY-PAD.t)/cH)*totalRange;
-  }
-
-  // Find a manual LZ line within touch threshold of clientY
-  function findLZNear(clientY){
-    const wrap=document.getElementById('az-chart-wrap');
-    if(!wrap||!_manualLZs.length)return null;
-    const rect=wrap.getBoundingClientRect();
-    const relY=clientY-rect.top;
-    const {minP,maxP,H,PAD}=_azLastYScale;
-    const cH=H-PAD.t-PAD.b;
-    const totalRange=maxP-minP||1;
-    for(const lz of _manualLZs){
-      const lzY=PAD.t+cH*(1-(lz.price-minP)/totalRange);
-      if(Math.abs(relY-lzY)<=16)return lz;
-    }
-    return null;
-  }
-
-  // RAF throttle — smooth rendering
-  function scheduleRender(){
-    if(!_azRafPending){
-      _azRafPending=true;
-      requestAnimationFrame(()=>{renderAZChart();_azRafPending=false;});
-    }
-  }
-
-  // ── PAN (horizontal scroll) ──
-  function panStart(e){
+  // ── PAN — touchstart ──
+  function panTouchStart(e){
     e.preventDefault();
     const {x,y}=getXY(e);
-    tapStartX=x;tapStartY=y;tapMoved=false;
-    // Check if touching near an existing LZ line — if so, drag that line
-    const touchClientY=e.touches?e.touches[0].clientY:e.clientY;
-    draggingLZ=findLZNear(touchClientY);
-    if(!draggingLZ){
-      startX=x;startOffset=_azViewState.offset;
-      panEl.style.cursor='grabbing';
-    }else{
-      panEl.style.cursor='ns-resize';
-    }
+    const clientY=e.touches?e.touches[0].clientY:e.clientY;
+    const lz=findLZNear(clientY);
+    _azDS.active=true;
+    _azDS.mode='pan';
+    _azDS.startX=x;startPanOffset();
+    _azDS.tapMoved=false;
+    _azDS.tapTime=Date.now();
+    _azDS.draggingLZ=lz||null;
+    panEl.style.cursor=lz?'ns-resize':'grabbing';
   }
-
-  function panMove(e){
+  function panTouchMove(e){
     e.preventDefault();
     const {x,y}=getXY(e);
-    if(Math.abs(x-tapStartX)>5||Math.abs(y-tapStartY)>5)tapMoved=true;
-
-    if(draggingLZ){
-      // Drag existing LZ line vertically
+    if(Math.abs(x-_azDS.startX)>4||Math.abs(y-(_azDS.startY||0))>4)_azDS.tapMoved=true;
+    if(_azDS.draggingLZ){
       const clientY=e.touches?e.touches[0].clientY:e.clientY;
-      const price=pixelToPrice(clientY);
-      if(price!==null){
-        draggingLZ.price=Math.round(price*100)/100;
-        scheduleRender();
-        renderLZPanel();
-      }
-      return;
+      dragLZTo(clientY);return;
     }
-
-    // Normal horizontal pan
-    // Drag LEFT (negative dx) = go back in time (increase offset = older candles)
-    const dx=x-startX;
-    const wrapEl=document.getElementById('az-chart-wrap');
-    const W=wrapEl?wrapEl.clientWidth:340;
-    const pxPerCandle=(W-6-50)/Math.max(1,_azViewState.visible);
-    const candlesDelta=Math.round(-dx/pxPerCandle); // negative dx → positive delta → older candles
-    const newOffset=Math.max(0,Math.min(startOffset+candlesDelta,_azCandles.length-_azViewState.visible));
-    if(newOffset!==_azViewState.offset){_azViewState.offset=newOffset;scheduleRender();}
+    doPan(x);
   }
-
-  function panEnd(e){
-    panEl.style.cursor='grab';
-    if(draggingLZ){draggingLZ=null;renderLZPanel();return;}
-    // Clean tap (no drag movement) in mark mode → place LZ at tapped price
-    if(!tapMoved&&_azMarkMode){
+  function panTouchEnd(e){
+    panEl.style.cursor=_azMarkMode?'crosshair':'grab';
+    if(_azDS.draggingLZ){_azDS.draggingLZ=null;renderLZPanel();_azDS.active=false;return;}
+    // Tap = no significant move + under 400ms
+    if(!_azDS.tapMoved&&(Date.now()-_azDS.tapTime)<400&&_azMarkMode){
       const clientY=e.changedTouches?e.changedTouches[0].clientY:e.clientY;
-      const price=pixelToPrice(clientY);
-      if(price!==null){addManualLZ(price,_azMarkMode);}
+      const clientX=e.changedTouches?e.changedTouches[0].clientX:e.clientX;
+      placeLZAtTap(clientX,clientY);
     }
-    draggingLZ=null;
+    _azDS.active=false;
   }
+  panEl.addEventListener('mousedown',panTouchStart,{passive:false});
+  panEl.addEventListener('touchstart',panTouchStart,{passive:false});
+  panEl.addEventListener('touchmove',panTouchMove,{passive:false});
+  panEl.addEventListener('touchend',panTouchEnd,{passive:false});
 
-  panEl.addEventListener('mousedown',panStart,{passive:false});
-  window.addEventListener('mousemove',function pmm(e){if(e.buttons===1&&document.getElementById('az-pan-overlay'))panMove(e);},{passive:false});
-  window.addEventListener('mouseup',function pmu(e){if(document.getElementById('az-pan-overlay'))panEnd(e);},{passive:false});
-  panEl.addEventListener('touchstart',panStart,{passive:false});
-  panEl.addEventListener('touchmove',panMove,{passive:false});
-  panEl.addEventListener('touchend',panEnd,{passive:false});
-
-  // ── Y-STRETCH (price scale drag) ──
-  function yStart(e){
+  // ── Y-SCALE — touch only (mouse handled by window listener) ──
+  function yTouchStart(e){
     e.preventDefault();
     const {y}=getXY(e);
-    startY=y;startYStretch=_azViewState.yStretch;
+    _azDS.active=true;_azDS.mode='yscale';
+    _azDS.startY=y;_azDS.startYStretch=_azViewState.yStretch;
   }
-  function yMove(e){
+  function yTouchMove(e){
     e.preventDefault();
     const {y}=getXY(e);
-    const dy=startY-y;
-    const factor=1+dy*0.005;
-    const newStretch=Math.max(0.3,Math.min(startYStretch*factor,8));
-    if(Math.abs(newStretch-_azViewState.yStretch)>0.01){_azViewState.yStretch=newStretch;scheduleRender();}
+    doYScale(y);
   }
-  yEl.addEventListener('mousedown',yStart,{passive:false});
-  window.addEventListener('mousemove',function ymm(e){if(e.buttons===1&&document.getElementById('az-yscale-overlay'))yMove(e);},{passive:false});
-  yEl.addEventListener('touchstart',yStart,{passive:false});
-  yEl.addEventListener('touchmove',yMove,{passive:false});
+  yEl.addEventListener('mousedown',function(e){
+    e.preventDefault();
+    const {y}=getXY(e);
+    _azDS.active=true;_azDS.mode='yscale';
+    _azDS.startY=y;_azDS.startYStretch=_azViewState.yStretch;
+  },{passive:false});
+  yEl.addEventListener('touchstart',yTouchStart,{passive:false});
+  yEl.addEventListener('touchmove',yTouchMove,{passive:false});
 
-  // ── X-STRETCH (time scale / candle zoom) ──
-  function xStart(e){
+  // ── X-SCALE ──
+  function xTouchStart(e){
     e.preventDefault();
     const {x}=getXY(e);
-    startX=x;startVisible=_azViewState.visible;
+    _azDS.active=true;_azDS.mode='xscale';
+    _azDS.startX=x;_azDS.startVisible=_azViewState.visible;
   }
-  function xMove(e){
+  function xTouchMove(e){
     e.preventDefault();
     const {x}=getXY(e);
-    // Drag left = see more candles (zoom out). Drag right = fewer (zoom in).
-    const dx=startX-x;
-    const delta=Math.round(dx*0.15);
-    const newVis=Math.max(10,Math.min(startVisible+delta,_azCandles.length));
-    if(newVis!==_azViewState.visible){_azViewState.visible=newVis;scheduleRender();}
+    doXScale(x);
   }
-  xEl.addEventListener('mousedown',xStart,{passive:false});
-  window.addEventListener('mousemove',function xmm(e){if(e.buttons===1&&document.getElementById('az-xscale-overlay'))xMove(e);},{passive:false});
-  xEl.addEventListener('touchstart',xStart,{passive:false});
-  xEl.addEventListener('touchmove',xMove,{passive:false});
+  xEl.addEventListener('mousedown',function(e){
+    e.preventDefault();
+    const {x}=getXY(e);
+    _azDS.active=true;_azDS.mode='xscale';
+    _azDS.startX=x;_azDS.startVisible=_azViewState.visible;
+  },{passive:false});
+  xEl.addEventListener('touchstart',xTouchStart,{passive:false});
+  xEl.addEventListener('touchmove',xTouchMove,{passive:false});
+}
+
+// ── Window-level mouse listeners — attached ONCE only via _azWinBound flag ──
+function initAZWindowListeners(){
+  if(_azWinBound)return;
+  _azWinBound=true;
+
+  window.addEventListener('mousemove',function(e){
+    if(!_azDS.active||e.buttons!==1)return;
+    if(Math.abs(e.clientX-_azDS.startX)>4)_azDS.tapMoved=true;
+    if(_azDS.mode==='pan'){
+      if(_azDS.draggingLZ){dragLZTo(e.clientY);return;}
+      doPan(e.clientX);
+    }else if(_azDS.mode==='yscale'){
+      doYScale(e.clientY);
+    }else if(_azDS.mode==='xscale'){
+      doXScale(e.clientX);
+    }
+  },{passive:false});
+
+  window.addEventListener('mouseup',function(e){
+    if(!_azDS.active)return;
+    if(_azDS.mode==='pan'){
+      if(_azDS.draggingLZ){_azDS.draggingLZ=null;renderLZPanel();}
+      else if(!_azDS.tapMoved&&(Date.now()-_azDS.tapTime)<400&&_azMarkMode){
+        placeLZAtTap(e.clientX,e.clientY);
+      }
+    }
+    _azDS.active=false;
+    const panEl=document.getElementById('az-pan-overlay');
+    if(panEl)panEl.style.cursor=_azMarkMode?'crosshair':'grab';
+  },{passive:false});
+}
+
+function startPanOffset(){
+  _azDS.startOffset=_azViewState.offset;
+  _azDS.startYStretch=_azViewState.yStretch;
+  _azDS.startVisible=_azViewState.visible;
+}
+
+// ── Convert client pixel position → chart price ──
+function pixelToPrice(clientY){
+  const wrap=document.getElementById('az-chart-wrap');
+  if(!wrap)return null;
+  const rect=wrap.getBoundingClientRect();
+  const {minP,maxP,H,PAD,cH}=_azYScale;
+  const relY=clientY-rect.top;
+  const totalRange=maxP-minP||1;
+  return minP+(1-(relY-PAD.t)/cH)*totalRange;
+}
+
+// ── Convert client X pixel → absolute candle index in _azCandles ──
+function pixelToCandle(clientX){
+  const wrap=document.getElementById('az-chart-wrap');
+  if(!wrap)return 0;
+  const rect=wrap.getBoundingClientRect();
+  const {PAD,cW,n,startIdx}=_azYScale;
+  const relX=Math.max(0,clientX-rect.left-PAD.l);
+  const fraction=relX/cW;
+  return Math.round(startIdx+fraction*n);
+}
+
+// ── Find LZ near a clientY tap (within 18px) ──
+function findLZNear(clientY){
+  const wrap=document.getElementById('az-chart-wrap');
+  if(!wrap||!_manualLZs.length)return null;
+  const rect=wrap.getBoundingClientRect();
+  const relY=clientY-rect.top;
+  const {minP,maxP,H,PAD,cH}=_azYScale;
+  const totalRange=maxP-minP||1;
+  for(const lz of _manualLZs){
+    const lzY=PAD.t+cH*(1-(lz.price-minP)/totalRange);
+    if(Math.abs(relY-lzY)<=18)return lz;
+  }
+  return null;
+}
+
+// ── Drag existing LZ line vertically ──
+function dragLZTo(clientY){
+  if(!_azDS.draggingLZ)return;
+  const price=pixelToPrice(clientY);
+  if(price===null)return;
+  _azDS.draggingLZ.price=Math.round(price*100)/100;
+  if(!_azRafPending){
+    _azRafPending=true;
+    requestAnimationFrame(()=>{renderAZChart();_azRafPending=false;});
+  }
+}
+
+// ── Place new LZ at tap position ──
+function placeLZAtTap(clientX,clientY){
+  const price=pixelToPrice(clientY);
+  if(price===null||!_azMarkMode)return;
+  const anchorIdx=Math.max(0,Math.min(pixelToCandle(clientX),_azCandles.length-1));
+  _azLZCounter++;
+  _manualLZs.push({id:_azLZCounter,price:Math.round(price*100)/100,type:_azMarkMode,anchorIdx});
+  renderAZChart();
+  renderLZPanel();
 }
 
 function niceNum(v){
@@ -5441,14 +5545,10 @@ function niceNum(v){
 }
 
 function detectKeyLevels(candles,minP,maxP){
-  const levels=[];
-  // Auto RN lines removed — mark levels manually using the LZ tools below the chart
-  // Auto swing LZ detection removed — manually identify and mark LZs for accurate AI analysis
-  const last=candles[candles.length-1].c;
-  const n=candles.length;
-
-  // Return empty — all level marking is manual
-  return levels;
+  // All level marking is manual — auto RN lines and auto swing LZs removed
+  // RN lines cluttered the chart with irrelevant levels
+  // Auto LZ detection was unreliable — manually mark using H-LZ / L-LZ tools
+  return [];
 }
 
 function renderLevelLegend(levels){
@@ -5600,9 +5700,9 @@ async function runAIAnalysis(){
   const out=document.getElementById('az-analysis-output');
   btn.disabled=true;btn.textContent='Analyzing...';
   out.innerHTML='<div class="az-thinking"><div class="az-dot"></div><div class="az-dot"></div><div class="az-dot"></div><span>Gemini is analyzing the candles...</span></div>';
-  // Use the currently visible candle window (same as on screen) — capped at 100 for the AI
+  // Use visible window — same candles on screen, capped at 100
   const _aiVis=Math.min(100,_azViewState.visible,_azCandles.length);
-  const _aiOff=Math.max(0,_azViewState.offset);
+  const _aiOff=_azViewState.offset;
   const _aiEnd=_azCandles.length-_aiOff;
   const _aiStart=Math.max(0,_aiEnd-_aiVis);
   const recent=_azCandles.slice(_aiStart,_aiEnd>0?_aiEnd:undefined);
@@ -5637,6 +5737,17 @@ async function runAIAnalysis(){
   }
   const nearRoundsText=getNearRNs(last.c);
 
+  // Manual LZ context — trader-identified zones override AI swing detection
+  const manualLZContext=_manualLZs.length>0
+    ?'TRADER-IDENTIFIED LIQUIDITY ZONES (use ONLY these — they override your swing detection):\n'+
+      _manualLZs.filter(lz=>lz.type==='H').sort((a,b)=>b.price-a.price)
+        .map(lz=>'H-LZ (resistance / sell-side): '+lz.price.toFixed(2)).join('\n')+
+      (_manualLZs.some(l=>l.type==='H')&&_manualLZs.some(l=>l.type==='L')?'\n':'')+
+      _manualLZs.filter(lz=>lz.type==='L').sort((a,b)=>b.price-a.price)
+        .map(lz=>'L-LZ (support / buy-side): '+lz.price.toFixed(2)).join('\n')+
+      '\nEvaluate whether price has swept any of these zones and whether a valid reversal signal has followed.'
+    :'No zones marked by trader. Use swing high ('+swH+') and swing low ('+swL+') as approximate reference — note auto-detection may be imprecise.';
+
   // Build trade history context from journal for AI learning
   const histTrades=(trades||[]).slice(0,25);
   const historyContext=histTrades.length>0
@@ -5648,16 +5759,6 @@ async function runAIAnalysis(){
         return `${t.trade_date||'?'} | ${t.session||'?'} | ${t.direction||'?'} | ${t.result||'?'} | P&L: ${parseFloat(t.pnl||0)>=0?'+':''}${parseFloat(t.pnl||0).toFixed(2)} | Confluences: ${conf||'not recorded'}`;
       }).join('\n')
     :'No trade history yet — this will improve your analysis as you log more trades.';
-
-  // Manual LZ context — pass trader-identified zones to AI
-  const manualLZContext=_manualLZs.length>0
-    ?'\n==== TRADER-IDENTIFIED LIQUIDITY ZONES ====\n'+
-      'The trader has manually marked these zones on the chart. Use ONLY these as the primary liquidity zones — they override your own swing detection:\n'+
-      _manualLZs.filter(lz=>lz.type==='H').sort((a,b)=>b.price-a.price).map(lz=>'H-LZ (sell-side / resistance): '+lz.price.toFixed(2)).join('\n')+
-      (_manualLZs.some(lz=>lz.type==='H')&&_manualLZs.some(lz=>lz.type==='L')?'\n':'')+
-      _manualLZs.filter(lz=>lz.type==='L').sort((a,b)=>b.price-a.price).map(lz=>'L-LZ (buy-side / support): '+lz.price.toFixed(2)).join('\n')+
-      '\nEvaluate whether price has swept any of these zones and whether a valid reversal signal has followed.'
-    :'\n==== LIQUIDITY ZONES ====\nNo zones manually marked by the trader. Use the swing high/low data ('+swH+' / '+swL+') as reference only — note that auto-detection may be imprecise.';
 
   const prompt=`You are an expert market analyst specializing in institutional algorithm footprint analysis on XAUUSD. You do NOT use or reference SMC. You follow the ToxikWick_Algo_Logic — tracking how big banks and institutional algorithms execute orders, sweep liquidity, and reverse price.
 
@@ -5717,10 +5818,11 @@ Current Price: ${last.c.toFixed(2)}
 Recent Swing High (reference): ${swH}
 Recent Swing Low (reference): ${swL}
 Round Numbers Near Price: ${nearRoundsText}
+
+==== LIQUIDITY ZONES ====
 ${manualLZContext}
 
-LAST ${recent.length} CANDLES — each labeled with WAT time (oldest first, most recent at bottom).
-IMPORTANT: When referencing candles in your analysis, ALWAYS use the WAT time and price value — e.g. "the bearish candle at 13:00 that closed at 4698.20" or "the high at 4726.44 formed at 06:00". NEVER say "candle 4" or "candle 10" — those numbers mean nothing on the visible chart.
+LAST ${recent.length} CANDLES — WAT timestamp (oldest→newest). Reference by time and price, never by candle number.
 ${ohlcSummary}
 
 ==== YOUR TRADE HISTORY (last 25 trades — learn these patterns to improve accuracy) ====
@@ -5942,42 +6044,29 @@ function renderAnalysisResult(r){
     `</div>`;
 }
 
-// ── Manual Liquidity Zone Management ──────────────────────────────────────────
+// ── Manual LZ Management ──────────────────────────────────────────────────────
 
 window.toggleMarkMode=function(type){
   _azMarkMode=(_azMarkMode===type)?false:type;
   const hBtn=document.getElementById('az-mark-h-btn');
   const lBtn=document.getElementById('az-mark-l-btn');
-  const status=document.getElementById('az-mark-status');
-  const panEl=document.getElementById('az-pan-overlay');
-  // Style H button
   if(hBtn){
-    hBtn.style.background=_azMarkMode==='H'?'rgba(224,82,82,.2)':'transparent';
-    hBtn.style.borderColor=_azMarkMode==='H'?'rgba(224,82,82,.55)':'#1C1C1C';
-    hBtn.style.color=_azMarkMode==='H'?'#E05252':'#555';
+    const on=_azMarkMode==='H';
+    hBtn.style.background=on?'rgba(224,82,82,.18)':'transparent';
+    hBtn.style.borderColor=on?'rgba(224,82,82,.6)':'#1C1C1C';
+    hBtn.style.color=on?'#E05252':'#555';
   }
-  // Style L button
   if(lBtn){
-    lBtn.style.background=_azMarkMode==='L'?'rgba(45,184,124,.2)':'transparent';
-    lBtn.style.borderColor=_azMarkMode==='L'?'rgba(45,184,124,.55)':'#1C1C1C';
-    lBtn.style.color=_azMarkMode==='L'?'#2DB87C':'#555';
+    const on=_azMarkMode==='L';
+    lBtn.style.background=on?'rgba(224,82,82,.12)':'transparent';
+    lBtn.style.borderColor=on?'rgba(224,82,82,.45)':'#1C1C1C';
+    lBtn.style.color=on?'#F0A0A0':'#555';
   }
-  // Status hint
-  if(status){
-    status.textContent=_azMarkMode
-      ?'Tap chart to mark '+(_azMarkMode==='H'?'resistance (H)':'support (L)')+' zone · drag line to adjust'
-      :'';
-  }
-  // Change cursor on pan overlay
-  if(panEl){panEl.style.cursor=_azMarkMode?'crosshair':'grab';}
-};
-
-function addManualLZ(price,type){
-  _azLZCounter++;
-  _manualLZs.push({id:_azLZCounter,price:Math.round(price*100)/100,type});
-  renderAZChart();
+  // Update chart cursor
+  const panEl=document.getElementById('az-pan-overlay');
+  if(panEl)panEl.style.cursor=_azMarkMode?'crosshair':'grab';
   renderLZPanel();
-}
+};
 
 window.removeManualLZ=function(id){
   _manualLZs=_manualLZs.filter(lz=>lz.id!==id);
@@ -5989,21 +6078,12 @@ window.clearManualLZs=function(){
   if(!_manualLZs.length)return;
   _manualLZs=[];
   _azMarkMode=false;
-  // Reset button styles
   const hBtn=document.getElementById('az-mark-h-btn');
   const lBtn=document.getElementById('az-mark-l-btn');
-  const status=document.getElementById('az-mark-status');
   if(hBtn){hBtn.style.background='transparent';hBtn.style.borderColor='#1C1C1C';hBtn.style.color='#555';}
   if(lBtn){lBtn.style.background='transparent';lBtn.style.borderColor='#1C1C1C';lBtn.style.color='#555';}
-  if(status)status.textContent='';
-  renderAZChart();
-  renderLZPanel();
-};
-
-window.adjustLZPrice=function(id,delta){
-  const lz=_manualLZs.find(l=>l.id===id);
-  if(!lz)return;
-  lz.price=Math.round((lz.price+delta)*100)/100;
+  const panEl=document.getElementById('az-pan-overlay');
+  if(panEl)panEl.style.cursor='grab';
   renderAZChart();
   renderLZPanel();
 };
@@ -6011,27 +6091,30 @@ window.adjustLZPrice=function(id,delta){
 function renderLZPanel(){
   const el=document.getElementById('az-lz-panel');
   if(!el)return;
-  if(!_manualLZs.length){el.style.display='none';return;}
-  el.style.display='block';
-  // Sort: H-LZs (higher price) first, then L-LZs
+  const modeHint=document.getElementById('az-mode-hint');
+  if(modeHint){
+    modeHint.textContent=_azMarkMode
+      ?(_azMarkMode==='H'?'Tap chart · placing H zone':'Tap chart · placing L zone')
+      :(_manualLZs.length?'Tap H-LZ or L-LZ to mark a new zone':'');
+    modeHint.style.color=_azMarkMode==='H'?'#E05252':_azMarkMode==='L'?'#F0A0A0':'#444';
+  }
+  if(!_manualLZs.length){el.innerHTML='';return;}
   const sorted=[..._manualLZs].sort((a,b)=>b.price-a.price);
   el.innerHTML=
-    `<div style="font-size:8px;color:#333;letter-spacing:.1em;text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:6px">Marked Zones · drag line on chart or use ▲▼ to adjust</div>`+
+    `<div style="font-size:8px;color:#2A2A2A;letter-spacing:.1em;text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:5px">Marked Zones · drag line on chart to adjust</div>`+
     sorted.map(lz=>{
-      const col=lz.type==='H'?'#E05252':'#2DB87C';
-      const bg=lz.type==='H'?'rgba(224,82,82,.07)':'rgba(45,184,124,.07)';
-      const bdr=lz.type==='H'?'rgba(224,82,82,.22)':'rgba(45,184,124,.22)';
-      return`<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:${bg};border:1px solid ${bdr};border-radius:5px;margin-bottom:4px">`+
-        `<span style="font-size:9px;font-weight:700;color:${col};font-family:'DM Mono',monospace;padding:1px 6px;background:${bg};border:1px solid ${bdr};border-radius:3px;flex-shrink:0">${lz.type}-LZ</span>`+
-        `<span style="font-size:12px;font-weight:700;color:${col};font-family:'DM Mono',monospace;flex:1">${lz.price.toFixed(2)}</span>`+
-        `<button onclick="adjustLZPrice(${lz.id},0.5)" style="background:#111;border:1px solid #222;border-radius:3px;color:#666;font-size:10px;padding:3px 7px;cursor:pointer;font-family:'DM Mono',monospace">+</button>`+
-        `<button onclick="adjustLZPrice(${lz.id},-0.5)" style="background:#111;border:1px solid #222;border-radius:3px;color:#666;font-size:10px;padding:3px 7px;cursor:pointer;font-family:'DM Mono',monospace">−</button>`+
-        `<button onclick="removeManualLZ(${lz.id})" style="background:transparent;border:1px solid rgba(224,82,82,.25);border-radius:3px;color:#E05252;font-size:10px;padding:3px 8px;cursor:pointer;font-family:'DM Mono',monospace">✕</button>`+
+      const col=lz.type==='H'?'#E05252':'#F0A0A0';
+      const bg=lz.type==='H'?'rgba(224,82,82,.07)':'rgba(224,82,82,.04)';
+      const bdr=lz.type==='H'?'rgba(224,82,82,.22)':'rgba(224,82,82,.15)';
+      return `<div style="display:flex;align-items:center;gap:7px;padding:7px 9px;background:${bg};border:1px solid ${bdr};border-radius:5px;margin-bottom:4px">`+
+        `<span style="font-size:9px;font-weight:700;color:${col};font-family:'DM Mono',monospace;padding:1px 6px;border:1px solid ${bdr};border-radius:3px;flex-shrink:0">${lz.type}</span>`+
+        `<span style="font-size:13px;font-weight:700;color:${col};font-family:'DM Mono',monospace;flex:1">${lz.price.toFixed(2)}</span>`+
+        `<button onclick="removeManualLZ(${lz.id})" style="background:transparent;border:1px solid rgba(224,82,82,.3);border-radius:4px;color:#E05252;font-size:11px;padding:3px 10px;cursor:pointer;font-family:'DM Mono',monospace;flex-shrink:0">✕</button>`+
       `</div>`;
     }).join('');
 }
 
-// ── END Manual LZ Management ───────────────────────────────────────────────────
+// ── END LZ Management ─────────────────────────────────────────────────────────
 
 // ── Init ──
 function initAnalyzer(){
