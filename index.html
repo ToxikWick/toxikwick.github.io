@@ -5106,8 +5106,10 @@ const TD_SOURCES=[
 
 function getTDKey(){try{return localStorage.getItem('tw_td_key')||'';}catch(e){return '';}}
 function getTDSource(){try{return localStorage.getItem('tw_td_source')||'';}catch(e){return '';}}
+function getTDOffset(){try{return parseFloat(localStorage.getItem('tw_td_offset')||'0')||0;}catch(e){return 0;}}
 function _saveTDKey(k){try{localStorage.setItem('tw_td_key',k);}catch(e){}}
 function _saveTDSource(s){try{localStorage.setItem('tw_td_source',s);}catch(e){}}
+function _saveTDOffset(v){try{localStorage.setItem('tw_td_offset',String(v));}catch(e){}}
 
 function azShowDataKeySetup(isChange){
   const cc=document.getElementById('az-chart-card');
@@ -5131,11 +5133,13 @@ function azShowDataKeySetup(isChange){
       `<div style="font-size:10px;color:#555;font-family:'DM Mono',monospace;line-height:1.7;margin-bottom:10px">`+
         `Twelve Data · 800 calls/day free.<br>Key stored on this device only.`+
       `</div>`+
+
       `<div style="font-size:9px;color:#444;font-family:'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">API Key</div>`+
       `<input class="az-key-input" id="az-td-key-input" type="password" `+
         `placeholder="${curKey?'Key saved — paste new one to replace':'Paste your Twelve Data key'}" `+
         `autocomplete="off" onkeydown="if(event.key==='Enter')azSaveDataKey()" style="margin-bottom:4px">`+
       `<div id="az-td-key-err" style="font-size:10px;color:#E05252;font-family:'DM Mono',monospace;min-height:12px;margin-bottom:10px"></div>`+
+
       `<div style="font-size:9px;color:#444;font-family:'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">XAUUSD Data Source</div>`+
       `<select id="az-td-source-sel" style="width:100%;background:#111;color:#E2DDD6;border:1px solid #1C1C1C;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;padding:9px 10px;margin-bottom:4px;-webkit-appearance:none;cursor:pointer">`+
         sourceOptions+
@@ -5143,6 +5147,20 @@ function azShowDataKeySetup(isChange){
       `<div id="az-td-src-desc" style="font-size:9px;color:#333;font-family:'DM Mono',monospace;min-height:12px;margin-bottom:12px">`+
         (TD_SOURCES.find(s=>s.id===curSrc)||TD_SOURCES[0]).desc+
       `</div>`+
+
+      // ── Price Offset ──
+      `<div style="font-size:9px;color:#444;font-family:'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Price Offset (pips)</div>`+
+      `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">`+
+        `<input id="az-td-offset-input" type="number" step="0.1" min="-20" max="20" value="${getTDOffset()||0}" `+
+          `style="flex:1;background:#111;color:#E2DDD6;border:1px solid #1C1C1C;border-radius:6px;font-family:'DM Mono',monospace;font-size:12px;padding:9px 10px;-webkit-appearance:none">`+
+        `<button onclick="document.getElementById('az-td-offset-input').value=0" `+
+          `style="font-size:9px;color:#444;background:none;border:1px solid #1C1C1C;border-radius:4px;padding:7px 10px;cursor:pointer;font-family:'DM Mono',monospace;white-space:nowrap">Reset</button>`+
+      `</div>`+
+      `<div style="font-size:9px;color:#333;font-family:'DM Mono',monospace;line-height:1.6;margin-bottom:14px">`+
+        `Aligns chart with MT5 / TradingView. If your broker shows higher prices, enter a positive value.<br>`+
+        `Example: MT5 shows 4547.50, chart shows 4545.00 → enter <span style="color:#C9A84C">+2.5</span>`+
+      `</div>`+
+
       `<div style="display:flex;gap:7px">`+
         `<button class="az-btn az-btn-primary" style="flex:1;padding:10px" onclick="azSaveDataKey()">Save & Load Chart</button>`+
         (isChange?`<button class="az-btn az-btn-ghost" onclick="azCancelDataKeyChange()">Cancel</button>`:'')+
@@ -5181,6 +5199,12 @@ function azSaveDataKey(){
   }
   if(newKey)_saveTDKey(newKey);
   if(sel)_saveTDSource(sel.value);
+  // Save price offset — clamp to ±20 pips
+  const offsetInp=document.getElementById('az-td-offset-input');
+  if(offsetInp){
+    const offsetVal=Math.max(-20,Math.min(20,parseFloat(offsetInp.value)||0));
+    _saveTDOffset(offsetVal);
+  }
   const panel=document.getElementById('az-datakey-panel');
   const inner=document.getElementById('az-chart-inner');
   if(panel)panel.style.display='none';
@@ -5255,13 +5279,21 @@ async function loadAnalyzerChart(){
     }
 
     // Twelve Data returns newest first — reverse to oldest first; filter weekends
-    _azCandles=[...d.values].reverse().map(c=>({
+    // Parse candles — Twelve Data returns newest first, reverse to oldest→newest
+    // Filter weekends — no institutional activity on Sat/Sun
+    const rawCandles=[...d.values].reverse().map(c=>({
       t:new Date(c.datetime),
       o:parseFloat(c.open),
       h:parseFloat(c.high),
       l:parseFloat(c.low),
       c:parseFloat(c.close),
     })).filter(c=>{const day=c.t.getDay();return day!==0&&day!==6;});
+
+    // Apply price offset — aligns Twelve Data feed with MT5/TradingView broker price
+    const offset=getTDOffset();
+    _azCandles=offset!==0
+      ? rawCandles.map(c=>({t:c.t,o:c.o+offset,h:c.h+offset,l:c.l+offset,c:c.c+offset}))
+      : rawCandles;
 
     if(!_azCandles.length){
       if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">All candles filtered. Try a different timeframe or source.</div>';
@@ -5278,8 +5310,10 @@ async function loadAnalyzerChart(){
     if(refBtn)refBtn.style.display='inline-flex';
 
     const srcLabel=TD_SOURCES.find(s=>s.id===src)?.label||'Twelve Data';
+    const activeOffset=getTDOffset();
+    const offsetLabel=activeOffset!==0?` · offset ${activeOffset>0?'+':''}${activeOffset}`:'';
     const lu=document.getElementById('az-last-updated');
-    if(lu)lu.textContent='Updated '+new Date().toLocaleTimeString()+' · '+srcLabel;
+    if(lu)lu.textContent='Updated '+new Date().toLocaleTimeString()+' · '+srcLabel+offsetLabel;
 
     const last=_azCandles[_azCandles.length-1];
     const prev=_azCandles[_azCandles.length-2]||last;
