@@ -994,8 +994,8 @@ select option{background:#181818;color:#E2DDD6}
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
         <div id="az-session-indicator" style="font-size:9px;font-family:'DM Mono',monospace;text-align:right"></div>
         <div style="display:flex;gap:5px">
-          <button onclick="azPromptChangeChartKey()" title="Alpha Vantage chart data key" style="font-size:9px;color:#444;background:none;border:1px solid #1C1C1C;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;white-space:nowrap">📡 Data Key</button>
-          <button onclick="azPromptChangeKey()" title="Gemini AI analysis key" style="font-size:9px;color:#444;background:none;border:1px solid #1C1C1C;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;white-space:nowrap">🔑 AI Key</button>
+          <button onclick="azPromptChangeDataKey()" title="Chart data key & source" style="font-size:9px;color:#444;background:none;border:1px solid #1C1C1C;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;white-space:nowrap">📡 Data</button>
+          <button onclick="azPromptChangeKey()" title="Gemini AI key" style="font-size:9px;color:#444;background:none;border:1px solid #1C1C1C;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;white-space:nowrap">🔑 AI</button>
         </div>
       </div>
     </div>
@@ -1027,8 +1027,9 @@ select option{background:#181818;color:#E2DDD6}
 
     <!-- Chart -->
     <div class="az-card" id="az-chart-card" style="display:none">
-      <!-- Chart data key setup — shown inline when key is missing -->
-      <div id="az-chartkey-card" style="display:none"></div>
+      <!-- Inline data key & source setup — shown when key is missing or 📡 Data tapped -->
+      <div id="az-datakey-panel" style="display:none"></div>
+      <!-- Chart content — hidden while key setup is showing -->
       <div id="az-chart-inner">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div class="az-hdr" style="margin-bottom:0" id="az-chart-title">XAUUSD</div>
@@ -1057,7 +1058,7 @@ select option{background:#181818;color:#E2DDD6}
       </div>
       <!-- Marked zones list -->
       <div id="az-lz-panel" style="margin-top:8px"></div>
-      </div><!-- end az-chart-inner -->
+      </div><!-- /az-chart-inner -->
     </div>
 
     <!-- AI Confluence Analysis -->
@@ -1191,8 +1192,8 @@ select option{background:#181818;color:#E2DDD6}
 const SB_URL='https://pewkiwknniphfwhnoxsv.supabase.co';
 const SB_KEY='sb_publishable_l4PTYKlCiPoVGkQZj0loWQ_JMHGkGd3';
 const AUTH_URL=SB_URL+'/auth/v1';
-// Chart data — Alpha Vantage. Key stored in localStorage by user; never hardcoded.
-const AV_URL='https://www.alphavantage.co/query';
+// Twelve Data — key & source stored in localStorage by user; never hardcoded
+const TD_URL='https://api.twelvedata.com';
 // Gemini API key — stored in localStorage by user; never hardcoded in source
 const GEMINI_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 const STORAGE_URL=SB_URL+'/storage/v1';
@@ -5095,101 +5096,146 @@ function selectTF(btn){
   if(_azCandles.length)loadAnalyzerChart();
 }
 
-// ── Alpha Vantage Chart Key Management ────────────────────────────────────────
-function getChartKey(){try{return localStorage.getItem('tw_av_key')||'';}catch(e){return '';}}
-function _saveChartKey(k){try{localStorage.setItem('tw_av_key',k);}catch(e){}}
-function _clearChartKey(){try{localStorage.removeItem('tw_av_key');}catch(e){}}
+// ── Twelve Data Key & Source Management ───────────────────────────────────────
+// Available XAUUSD data sources on Twelve Data
+const TD_SOURCES=[
+  {id:'',         label:'Default (OTC interbank)',  desc:'Generic spot gold — widest coverage'},
+  {id:'FOREX_COM',label:'Forex.com',                desc:'Forex.com broker feed'},
+  {id:'OANDA',    label:'OANDA',                    desc:'OANDA broker feed'},
+  {id:'FXCM',     label:'FXCM',                     desc:'FXCM broker feed'},
+  {id:'SAXO',     label:'Saxo Bank',                desc:'Saxo Bank feed'},
+  {id:'GAIN',     label:'GAIN Capital',             desc:'GAIN Capital feed'},
+];
 
-function azShowChartKeySetup(isChange){
-  const card=document.getElementById('az-chart-card');
-  const keyCard=document.getElementById('az-chartkey-card');
+function getTDKey(){try{return localStorage.getItem('tw_td_key')||'';}catch(e){return '';}}
+function getTDSource(){try{return localStorage.getItem('tw_td_source')||'';}catch(e){return '';}}
+function _saveTDKey(k){try{localStorage.setItem('tw_td_key',k);}catch(e){}}
+function _saveTDSource(s){try{localStorage.setItem('tw_td_source',s);}catch(e){}}
+
+function azShowDataKeySetup(isChange){
+  const cc=document.getElementById('az-chart-card');
+  const panel=document.getElementById('az-datakey-panel');
   const inner=document.getElementById('az-chart-inner');
-  if(!keyCard)return;
-  if(card)card.style.display='block';
+  if(!panel)return;
+  if(cc)cc.style.display='block';
   if(inner)inner.style.display='none';
-  keyCard.style.display='block';
-  keyCard.innerHTML=
+  panel.style.display='block';
+
+  const curKey=getTDKey();
+  const curSrc=getTDSource();
+
+  const sourceOptions=TD_SOURCES.map(s=>
+    `<option value="${s.id}" ${curSrc===s.id?'selected':''}>${s.label}</option>`
+  ).join('');
+
+  panel.innerHTML=
     `<div class="az-key-setup">`+
-      `<div style="font-size:24px;margin-bottom:10px">📡</div>`+
-      `<div style="font-size:13px;font-weight:700;color:#E2DDD6;margin-bottom:5px">`+
-        (isChange?'Update Chart Data Key':'Set Your Alpha Vantage Key')+
+      `<div style="font-size:22px;margin-bottom:8px">📡</div>`+
+      `<div style="font-size:13px;font-weight:700;color:#E2DDD6;margin-bottom:4px">`+
+        (isChange?'Update Chart Data Settings':'Chart Data Setup')+
       `</div>`+
-      `<div style="font-size:10px;color:#555;font-family:'DM Mono',monospace;line-height:1.7;margin-bottom:4px">`+
-        `Powers the XAU/USD candlestick chart.<br>Stored on this device only — never in source code.`+
+      `<div style="font-size:10px;color:#555;font-family:'DM Mono',monospace;line-height:1.7;margin-bottom:10px">`+
+        `Twelve Data powers the candlestick chart.<br>`+
+        `Free key = 800 calls/day — plenty for daily analysis.<br>`+
+        `Key stored on device only. Never in source code.`+
       `</div>`+
-      `<input class="az-key-input" id="az-chartkey-input" type="password" `+
-        `placeholder="Paste your Alpha Vantage key here" autocomplete="off" `+
-        `onkeydown="if(event.key==='Enter')azSaveChartKey()">`+
-      `<div id="az-chartkey-err" style="font-size:10px;color:#E05252;font-family:'DM Mono',monospace;min-height:14px;margin-bottom:6px"></div>`+
+
+      // API Key input
+      `<div style="font-size:9px;color:#444;font-family:'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Twelve Data API Key</div>`+
+      `<input class="az-key-input" id="az-td-key-input" type="password" `+
+        `placeholder="${curKey?'Key saved — paste new one to replace':'Paste your Twelve Data key'}" `+
+        `autocomplete="off" style="margin-bottom:4px">`+
+      `<div id="az-td-key-err" style="font-size:10px;color:#E05252;font-family:'DM Mono',monospace;min-height:12px;margin-bottom:10px"></div>`+
+
+      // Source selector
+      `<div style="font-size:9px;color:#444;font-family:'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">XAUUSD Data Source</div>`+
+      `<select id="az-td-source-sel" `+
+        `style="width:100%;background:#111;color:#E2DDD6;border:1px solid #1C1C1C;border-radius:6px;`+
+        `font-family:'DM Mono',monospace;font-size:11px;padding:9px 10px;margin-bottom:4px;`+
+        `-webkit-appearance:none;cursor:pointer">`+
+        sourceOptions+
+      `</select>`+
+      `<div id="az-td-src-desc" style="font-size:9px;color:#333;font-family:'DM Mono',monospace;min-height:12px;margin-bottom:12px">`+
+        (TD_SOURCES.find(s=>s.id===curSrc)||TD_SOURCES[0]).desc+
+      `</div>`+
+
+      // Buttons
       `<div style="display:flex;gap:7px">`+
-        `<button class="az-btn az-btn-primary" style="flex:1;padding:10px" onclick="azSaveChartKey()">Save & Load Chart</button>`+
-        (isChange?`<button class="az-btn az-btn-ghost" onclick="azCancelChartKeyChange()">Cancel</button>`:'')+
+        `<button class="az-btn az-btn-primary" style="flex:1;padding:10px" onclick="azSaveDataKey()">Save & Load Chart</button>`+
+        (isChange?`<button class="az-btn az-btn-ghost" onclick="azCancelDataKeyChange()">Cancel</button>`:'')+
       `</div>`+
       `<div style="margin-top:12px;font-size:9px;color:#2A2A2A;font-family:'DM Mono',monospace">`+
-        `Free key at <span style="color:#C9A84C">alphavantage.co/support/#api-key</span>`+
+        `Get a free key at <span style="color:#C9A84C">twelvedata.com</span> → Sign Up → API Keys`+
       `</div>`+
     `</div>`;
-  setTimeout(()=>{const i=document.getElementById('az-chartkey-input');if(i)i.focus();},80);
+
+  // Live source description update
+  const sel=document.getElementById('az-td-source-sel');
+  const descEl=document.getElementById('az-td-src-desc');
+  if(sel&&descEl){
+    sel.addEventListener('change',function(){
+      const found=TD_SOURCES.find(s=>s.id===this.value);
+      if(found)descEl.textContent=found.desc;
+    });
+  }
+  setTimeout(()=>{
+    const i=document.getElementById('az-td-key-input');
+    if(i)i.focus();
+  },80);
 }
 
-function azSaveChartKey(){
-  const inp=document.getElementById('az-chartkey-input');
-  const errEl=document.getElementById('az-chartkey-err');
-  if(!inp)return;
-  const k=inp.value.trim();
-  if(!k){if(errEl)errEl.textContent='Key cannot be empty.';return;}
-  if(k.length<8){
-    if(errEl)errEl.textContent='Key looks too short — check and paste again.';
-    inp.style.borderColor='rgba(224,82,82,.45)';return;
+function azSaveDataKey(){
+  const inp=document.getElementById('az-td-key-input');
+  const errEl=document.getElementById('az-td-key-err');
+  const sel=document.getElementById('az-td-source-sel');
+
+  const newKey=(inp&&inp.value.trim())||'';
+  const savedKey=getTDKey();
+  const finalKey=newKey||savedKey; // keep saved key if field left blank (user only changing source)
+
+  if(!finalKey){
+    if(errEl)errEl.textContent='Enter your Twelve Data API key first.';
+    if(inp)inp.style.borderColor='rgba(224,82,82,.45)';
+    return;
   }
-  _saveChartKey(k);
-  const keyCard=document.getElementById('az-chartkey-card');
+  if(newKey&&newKey.length<16){
+    if(errEl)errEl.textContent='Key looks too short — check and paste again.';
+    if(inp)inp.style.borderColor='rgba(224,82,82,.45)';
+    return;
+  }
+
+  if(newKey)_saveTDKey(newKey);
+  if(sel)_saveTDSource(sel.value);
+
+  // Hide setup, show chart, load
+  const panel=document.getElementById('az-datakey-panel');
   const inner=document.getElementById('az-chart-inner');
-  if(keyCard)keyCard.style.display='none';
+  if(panel)panel.style.display='none';
   if(inner)inner.style.display='';
-  flash('ok','Chart data key saved. Loading...');
+  flash('ok','Data settings saved. Loading chart...');
   loadAnalyzerChart();
 }
 
-function azPromptChangeChartKey(){azShowChartKeySetup(true);}
+function azPromptChangeDataKey(){azShowDataKeySetup(true);}
 
-function azCancelChartKeyChange(){
-  const keyCard=document.getElementById('az-chartkey-card');
+function azCancelDataKeyChange(){
+  const panel=document.getElementById('az-datakey-panel');
   const inner=document.getElementById('az-chart-inner');
-  if(keyCard)keyCard.style.display='none';
+  if(panel)panel.style.display='none';
   if(inner)inner.style.display='';
 }
-// ── END Chart Key Management ───────────────────────────────────────────────────
+// ── END Data Key Management ────────────────────────────────────────────────────
 
-// ── 4H aggregation — group hourly candles into 4-hour blocks ──
-function aggregate4H(candles){
-  const groups={};
-  for(const c of candles){
-    // Group by UTC: floor hour to nearest 4 (00,04,08,12,16,20)
-    const d=c.t;
-    const blockH=Math.floor(d.getUTCHours()/4)*4;
-    const key=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),blockH);
-    if(!groups[key]){
-      groups[key]={t:new Date(key),o:c.o,h:c.h,l:c.l,c:c.c};
-    } else {
-      groups[key].h=Math.max(groups[key].h,c.h);
-      groups[key].l=Math.min(groups[key].l,c.l);
-      groups[key].c=c.c; // last close in block
-    }
-  }
-  return Object.values(groups).sort((a,b)=>a.t-b.t);
-}
-
-// ── Fetch candles from Alpha Vantage ──
+// ── Fetch candles from Twelve Data ────────────────────────────────────────────
 async function loadAnalyzerChart(){
   if(_azLoading)return;
 
-  // Check chart key — show setup if missing
-  const AVKEY=getChartKey();
-  if(!AVKEY){
+  // Guard: no key saved → show setup
+  const TDKEY=getTDKey();
+  if(!TDKEY){
     const cc=document.getElementById('az-chart-card');
     if(cc)cc.style.display='block';
-    azShowChartKeySetup(false);
+    azShowDataKeySetup(false);
     return;
   }
 
@@ -5198,13 +5244,13 @@ async function loadAnalyzerChart(){
   const refBtn=document.getElementById('az-refresh-btn');
   if(loadBtn){loadBtn.disabled=true;loadBtn.textContent='Loading...';}
 
-  // Show chart card, hide key setup, hide analysis until fresh data arrives
+  // Show chart card, ensure key panel is hidden
   const cc=document.getElementById('az-chart-card');
   const ac=document.getElementById('az-analysis-card');
   const inner=document.getElementById('az-chart-inner');
-  const keyCard=document.getElementById('az-chartkey-card');
+  const panel=document.getElementById('az-datakey-panel');
   if(cc)cc.style.display='block';
-  if(keyCard)keyCard.style.display='none';
+  if(panel)panel.style.display='none';
   if(inner)inner.style.display='';
   if(ac)ac.style.display='none';
   document.getElementById('az-analysis-output').innerHTML=
@@ -5214,79 +5260,64 @@ async function loadAnalyzerChart(){
   if(wrap)wrap.innerHTML='<div class="az-chart-loading">Fetching XAU/USD candles...</div>';
 
   try{
-    // ── Alpha Vantage timeframe mapping ──
-    // 4H uses 60min data aggregated client-side into 4-hour blocks
-    const tfMap={
-      '4h' :{fn:'FX_INTRADAY',interval:'60min', tsKey:'Time Series FX (60min)', is4H:true },
-      '1h' :{fn:'FX_INTRADAY',interval:'60min', tsKey:'Time Series FX (60min)', is4H:false},
-      '15min':{fn:'FX_INTRADAY',interval:'15min', tsKey:'Time Series FX (15min)', is4H:false},
-      '5min' :{fn:'FX_INTRADAY',interval:'5min',  tsKey:'Time Series FX (5min)',  is4H:false},
-    };
-    const tf=tfMap[_azTF]||tfMap['1h'];
+    // Twelve Data interval mapping
+    const intervalMap={'4h':'4h','1h':'1h','15min':'15min','5min':'5min'};
+    const interval=intervalMap[_azTF]||'1h';
 
-    const url=`${AV_URL}?function=${tf.fn}&from_symbol=XAU&to_symbol=USD`+
-              `&interval=${tf.interval}&outputsize=full&apikey=${AVKEY}`;
+    // Build URL — append exchange param only when a source is selected
+    const src=getTDSource();
+    const exchangeParam=src?`&exchange=${src}`:'';
+    const url=`${TD_URL}/time_series?symbol=XAU%2FUSD&interval=${interval}`+
+              `&outputsize=600&apikey=${TDKEY}${exchangeParam}`;
 
     const r=await fetch(url);
     const d=await r.json();
 
-    // ── Error handling ──
-    if(d['Error Message']||d['Note']||d['Information']){
-      let errMsg='Failed to load candles.';
-      if(d['Error Message'])errMsg='Invalid Alpha Vantage key — tap 📡 Data Key to update.';
-      else if(d['Note']||d['Information'])errMsg='API rate limit reached (25/day). Try again tomorrow or upgrade at alphavantage.co';
-      if(wrap)wrap.innerHTML=`<div class="az-chart-loading" style="color:#E05252">${errMsg}</div>`;
+    // ── Error handling: Twelve Data wraps errors in {status:'error',message:'...'}
+    if(d.status==='error'||!d.values||!d.values.length){
+      let msg=d.message||'No candle data returned.';
+      // Detect invalid key vs exchange not available
+      if(msg.toLowerCase().includes('api key')||msg.toLowerCase().includes('invalid')){
+        msg='Invalid Twelve Data key — tap 📡 Data to update.';
+      } else if(msg.toLowerCase().includes('exchange')||msg.toLowerCase().includes('not found')){
+        msg=`"${src||'Default'}" source not found for XAU/USD. Tap 📡 Data and try Default (OTC).`;
+      } else if(msg.toLowerCase().includes('limit')||msg.toLowerCase().includes('quota')){
+        msg='Daily limit reached (800/day free). Try again tomorrow.';
+      }
+      if(wrap)wrap.innerHTML=`<div class="az-chart-loading" style="color:#E05252;line-height:1.7">${msg}</div>`;
       _azLoading=false;
       if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
       return;
     }
 
-    // ── Find the time series object (key name depends on interval) ──
-    const tsData=d[tf.tsKey]||d[Object.keys(d).find(k=>k.startsWith('Time Series'))||''];
-    if(!tsData||!Object.keys(tsData).length){
-      if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">No candle data returned. Check your key or try again.</div>';
-      _azLoading=false;
-      if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
-      return;
-    }
+    // Twelve Data returns newest first — reverse to oldest first
+    // Filter weekends — no institutional activity on Saturday/Sunday
+    _azCandles=[...d.values].reverse().map(c=>({
+      t:new Date(c.datetime),
+      o:parseFloat(c.open),
+      h:parseFloat(c.high),
+      l:parseFloat(c.low),
+      c:parseFloat(c.close),
+    })).filter(c=>{const day=c.t.getDay();return day!==0&&day!==6;});
 
-    // ── Parse: Alpha Vantage timestamps are US Eastern — we use them as-is for display ──
-    // Sort oldest → newest (AV returns newest first)
-    let candles=Object.entries(tsData)
-      .sort(([a],[b])=>new Date(a)-new Date(b))
-      .map(([ts,v])=>({
-        t:new Date(ts),
-        o:parseFloat(v['1. open']),
-        h:parseFloat(v['2. high']),
-        l:parseFloat(v['3. low']),
-        c:parseFloat(v['4. close']),
-      }))
-      // Filter weekend candles
-      .filter(c=>{const day=c.t.getDay();return day!==0&&day!==6;});
-
-    // ── For 4H: aggregate hourly candles into 4-hour blocks ──
-    if(tf.is4H)candles=aggregate4H(candles);
-
-    // Keep the most recent 600 candles
-    if(candles.length>600)candles=candles.slice(candles.length-600);
-
-    if(!candles.length){
-      if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">No candles after filtering. Try a different timeframe.</div>';
+    if(!_azCandles.length){
+      if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">All candles filtered. Try a different source or timeframe.</div>';
       _azLoading=false;if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
       return;
     }
 
-    _azCandles=candles;
-
-    // Reset view — show most recent 60 candles, rest scrollable left
+    // Reset view — most recent 60 candles visible, remaining scrollable left
     _azViewState={offset:0,visible:60,yStretch:1.0,yPan:0};
     renderAZChart();
 
+    if(cc)cc.style.display='block';
     if(ac)ac.style.display='block';
     if(refBtn)refBtn.style.display='inline-flex';
 
+    // Source label for footer
+    const srcLabel=TD_SOURCES.find(s=>s.id===src)?.label||'Twelve Data';
     const lu=document.getElementById('az-last-updated');
-    if(lu)lu.textContent='Updated '+new Date().toLocaleTimeString()+' · Alpha Vantage';
+    if(lu)lu.textContent='Updated '+new Date().toLocaleTimeString()+' · '+srcLabel;
 
     // Price display
     const last=_azCandles[_azCandles.length-1];
@@ -5294,11 +5325,12 @@ async function loadAnalyzerChart(){
     const chg=last.c-prev.c;
     const pd=document.getElementById('az-price-display');
     if(pd){
-      const priceCol=chg>=0?'#2DB87C':'#E05252';
+      const col=chg>=0?'#2DB87C':'#E05252';
       pd.innerHTML=
-        `<span style="color:${priceCol}">${last.c.toFixed(2)}</span> `+
-        `<span style="font-size:9px;color:${priceCol};margin-left:4px">${chg>=0?'+':''}${chg.toFixed(2)}</span>`;
+        `<span style="color:${col}">${last.c.toFixed(2)}</span>`+
+        `<span style="font-size:9px;color:${col};margin-left:4px">${chg>=0?'+':''}${chg.toFixed(2)}</span>`;
     }
+
     const ct=document.getElementById('az-chart-title');
     const tfLbl={'4h':'4H Macro','1h':'1H HTF','15min':'15M Entry','5min':'5M Precision'}[_azTF]||_azTF;
     if(ct)ct.textContent='XAU/USD · '+tfLbl;
@@ -5334,7 +5366,7 @@ function renderAZChart(){
   if(!n)return;
 
   // Breathing room: reserve 8% of chart width empty on the right when at offset=0
-  // Cap candleW to 20px max — prevents giant candles when few bars are returned
+  // This prevents candles from being stuck flush against the right edge
   const rightBreath=off===0?Math.floor(n*0.08):0;
   const candleW=Math.max(2,Math.min(20,Math.floor(cW/(n+rightBreath))-1));
 
@@ -6284,13 +6316,13 @@ function renderLZPanel(){
 function initAnalyzer(){
   azUpdateClock();
   if(!window._azClockInterval)window._azClockInterval=setInterval(azUpdateClock,30000);
-  // If no chart data key saved — show Alpha Vantage key setup inside chart card
-  if(!getChartKey()){
+  // No Twelve Data key → show data setup inside chart card
+  if(!getTDKey()){
     const cc=document.getElementById('az-chart-card');
     if(cc)cc.style.display='block';
-    azShowChartKeySetup(false);
+    azShowDataKeySetup(false);
   }
-  // If no Gemini AI key saved — show AI key setup in analysis card
+  // No Gemini key → show AI key setup in analysis card
   if(!getGeminiKey()){
     const card=document.getElementById('az-analysis-card');
     if(card)card.style.display='';
