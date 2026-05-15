@@ -993,7 +993,10 @@ select option{background:#181818;color:#E2DDD6}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
         <div id="az-session-indicator" style="font-size:9px;font-family:'DM Mono',monospace;text-align:right"></div>
-        <button onclick="azPromptChangeKey()" style="font-size:9px;color:#444;background:none;border:1px solid #1C1C1C;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;white-space:nowrap">🔑 Key</button>
+        <div style="display:flex;gap:5px">
+          <button onclick="azPromptChangePolygonKey()" title="Polygon.io data key" style="font-size:9px;color:#444;background:none;border:1px solid #1C1C1C;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;white-space:nowrap">📡 Data Key</button>
+          <button onclick="azPromptChangeKey()" title="Gemini AI key" style="font-size:9px;color:#444;background:none;border:1px solid #1C1C1C;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;white-space:nowrap">🔑 AI Key</button>
+        </div>
       </div>
     </div>
 
@@ -1024,6 +1027,9 @@ select option{background:#181818;color:#E2DDD6}
 
     <!-- Chart -->
     <div class="az-card" id="az-chart-card" style="display:none">
+      <!-- Polygon key setup — shown inline when key is missing -->
+      <div id="az-polygon-key-card" style="display:none"></div>
+      <div id="az-chart-inner">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div class="az-hdr" style="margin-bottom:0" id="az-chart-title">XAUUSD</div>
         <div id="az-price-display" style="font-size:13px;font-weight:700;font-family:'DM Mono',monospace;color:#E2DDD6"></div>
@@ -1051,6 +1057,7 @@ select option{background:#181818;color:#E2DDD6}
       </div>
       <!-- Marked zones list -->
       <div id="az-lz-panel" style="margin-top:8px"></div>
+      </div><!-- end az-chart-inner -->
     </div>
 
     <!-- AI Confluence Analysis -->
@@ -1184,8 +1191,8 @@ select option{background:#181818;color:#E2DDD6}
 const SB_URL='https://pewkiwknniphfwhnoxsv.supabase.co';
 const SB_KEY='sb_publishable_l4PTYKlCiPoVGkQZj0loWQ_JMHGkGd3';
 const AUTH_URL=SB_URL+'/auth/v1';
-const TD_KEY='69cac9ece41641fbae1a9813ed1fafe3';
-const TD_URL='https://api.twelvedata.com';
+// Chart data — Polygon.io. Key stored in localStorage by user; never hardcoded.
+const POLYGON_URL='https://api.polygon.io';
 // Gemini API key — stored in localStorage by user; never hardcoded in source
 const GEMINI_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 const STORAGE_URL=SB_URL+'/storage/v1';
@@ -5021,7 +5028,7 @@ window.saveQuickTrade=async function(){
 let _azTF='1h';
 let _azCandles=[];
 let _azLoading=false;
-let _azViewState={offset:0,visible:60,yStretch:1.0,yPan:0};
+let _azViewState={offset:0,visible:60,yStretch:1.0};
 let _azRafPending=false;
 
 // ── Manual LZ state ──
@@ -5039,7 +5046,6 @@ let _azDS={
   mode:null,          // 'pan'|'yscale'|'xscale'
   startX:0,startY:0,
   startOffset:0,startVisible:0,startYStretch:0,
-  startYPan:0,startRawRange:1,
   tapMoved:false,
   tapTime:0,
   draggingLZ:null
@@ -5089,67 +5095,198 @@ function selectTF(btn){
   if(_azCandles.length)loadAnalyzerChart();
 }
 
-// ── Fetch candles from Twelve Data ──
+// ── Polygon.io key management ──────────────────────────────────────────────────
+function getPolygonKey(){try{return localStorage.getItem('tw_polygon_key')||'';}catch(e){return '';}}
+function _savePolygonKey(k){try{localStorage.setItem('tw_polygon_key',k);}catch(e){}}
+function _clearPolygonKey(){try{localStorage.removeItem('tw_polygon_key');}catch(e){}}
+
+// Show Polygon key setup inside the chart card (inline, same UX pattern as Gemini key)
+function azShowPolygonKeySetup(isChange){
+  const card=document.getElementById('az-chart-card');
+  const keyCard=document.getElementById('az-polygon-key-card');
+  const inner=document.getElementById('az-chart-inner');
+  if(!keyCard)return;
+  if(card)card.style.display='block';
+  if(inner)inner.style.display='none';
+  keyCard.style.display='block';
+  keyCard.innerHTML=
+    `<div class="az-key-setup">`+
+      `<div style="font-size:24px;margin-bottom:10px">📡</div>`+
+      `<div style="font-size:13px;font-weight:700;color:#E2DDD6;margin-bottom:5px">`+
+        (isChange?'Update Polygon.io Data Key':'Set Your Polygon.io Key')+
+      `</div>`+
+      `<div style="font-size:10px;color:#555;font-family:'DM Mono',monospace;line-height:1.7;margin-bottom:4px">`+
+        `Powers the XAUUSD candlestick chart.<br>Stored on this device only — never in source code.`+
+      `</div>`+
+      `<input class="az-key-input" id="az-polygon-key-input" type="password" `+
+        `placeholder="Paste your Polygon.io key here" autocomplete="off" `+
+        `onkeydown="if(event.key==='Enter')azSavePolygonKey()">`+
+      `<div id="az-polygon-key-err" style="font-size:10px;color:#E05252;font-family:'DM Mono',monospace;min-height:14px;margin-bottom:6px"></div>`+
+      `<div style="display:flex;gap:7px">`+
+        `<button class="az-btn az-btn-primary" style="flex:1;padding:10px" onclick="azSavePolygonKey()">Save & Load Chart</button>`+
+        (isChange?`<button class="az-btn az-btn-ghost" onclick="azCancelPolygonKeyChange()">Cancel</button>`:'')+
+      `</div>`+
+      `<div style="margin-top:12px;font-size:9px;color:#2A2A2A;font-family:'DM Mono',monospace">`+
+        `Free key at <span style="color:#C9A84C">polygon.io/dashboard/api-keys</span>`+
+      `</div>`+
+    `</div>`;
+  setTimeout(()=>{const i=document.getElementById('az-polygon-key-input');if(i)i.focus();},80);
+}
+
+function azSavePolygonKey(){
+  const inp=document.getElementById('az-polygon-key-input');
+  const errEl=document.getElementById('az-polygon-key-err');
+  if(!inp)return;
+  const k=inp.value.trim();
+  if(!k){if(errEl)errEl.textContent='Key cannot be empty.';return;}
+  if(k.length<10){
+    if(errEl)errEl.textContent='Key looks too short — check and paste again.';
+    inp.style.borderColor='rgba(224,82,82,.45)';
+    return;
+  }
+  _savePolygonKey(k);
+  // Hide key setup, show chart inner, then load
+  const keyCard=document.getElementById('az-polygon-key-card');
+  const inner=document.getElementById('az-chart-inner');
+  if(keyCard)keyCard.style.display='none';
+  if(inner)inner.style.display='';
+  flash('ok','Polygon key saved. Loading chart...');
+  loadAnalyzerChart();
+}
+
+function azPromptChangePolygonKey(){
+  azShowPolygonKeySetup(true);
+}
+
+function azCancelPolygonKeyChange(){
+  const keyCard=document.getElementById('az-polygon-key-card');
+  const inner=document.getElementById('az-chart-inner');
+  if(keyCard)keyCard.style.display='none';
+  if(inner)inner.style.display='';
+}
+// ── END Polygon Key Management ─────────────────────────────────────────────────
+
+// ── Fetch candles from Polygon.io ──
 async function loadAnalyzerChart(){
   if(_azLoading)return;
+
+  // Check for Polygon key first — show setup if missing
+  const PKEY=getPolygonKey();
+  if(!PKEY){
+    const cc=document.getElementById('az-chart-card');
+    if(cc)cc.style.display='block';
+    azShowPolygonKeySetup(false);
+    return;
+  }
+
   _azLoading=true;
   const loadBtn=document.getElementById('az-load-btn');
   const refBtn=document.getElementById('az-refresh-btn');
   if(loadBtn){loadBtn.disabled=true;loadBtn.textContent='Loading...';}
-  // Show chart card
+
+  // Show chart card, hide analysis until fresh data arrives
   const cc=document.getElementById('az-chart-card');
   const ac=document.getElementById('az-analysis-card');
+  const inner=document.getElementById('az-chart-inner');
+  const keyCard=document.getElementById('az-polygon-key-card');
   if(cc)cc.style.display='block';
-  if(ac)ac.style.display='none'; // reset analysis
+  if(keyCard)keyCard.style.display='none';
+  if(inner)inner.style.display='';
+  if(ac)ac.style.display='none';
   document.getElementById('az-analysis-output').innerHTML=
     '<div style="font-size:11px;color:#333;font-family:DM Mono,monospace;text-align:center;padding:16px 0">Tap Run Analysis to check confluences on the loaded candles</div>';
-  // Show loading state
+
+  // Show loading state in chart area
   const wrap=document.getElementById('az-chart-wrap');
-  if(wrap)wrap.innerHTML='<div class="az-chart-loading">Fetching real candles...</div>';
+  if(wrap)wrap.innerHTML='<div class="az-chart-loading">Fetching Polygon.io candles...</div>';
+
   try{
-    const outputsize=600; // fetch 600 — show 100 initially, 500 available to scroll into
-    const url=`${TD_URL}/time_series?symbol=XAU%2FUSD&interval=${_azTF}&outputsize=${outputsize}&apikey=${TD_KEY}`;
+    // ── Timeframe → Polygon multiplier + timespan ──
+    // Polygon endpoint: /v2/aggs/ticker/{ticker}/range/{mult}/{span}/{from}/{to}
+    const tfMap={
+      '4h' :{mult:4 ,span:'hour'  ,days:210},  // 210 days → ~600 4H bars
+      '1h' :{mult:1 ,span:'hour'  ,days:90 },  // 90 days  → ~600 1H bars
+      '15min':{mult:15,span:'minute',days:25},  // 25 days  → ~600 15M bars
+      '5min' :{mult:5 ,span:'minute',days:10},  // 10 days  → ~600 5M bars
+    };
+    const tf=tfMap[_azTF]||tfMap['1h'];
+
+    // Build date range — Polygon uses YYYY-MM-DD
+    const toDate=new Date();
+    const fromDate=new Date(Date.now()-tf.days*86400000);
+    const fmt=d=>d.toISOString().split('T')[0];
+
+    const url=`${POLYGON_URL}/v2/aggs/ticker/C:XAUUSD/range/${tf.mult}/${tf.span}/${fmt(fromDate)}/${fmt(toDate)}`+
+              `?adjusted=true&sort=asc&limit=600&apiKey=${PKEY}`;
+
     const r=await fetch(url);
     const d=await r.json();
-    if(d.status==='error'||!d.values||!d.values.length){
-      if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">'+(d.message||'Failed to load candles. Check API key or try again.')+'</div>';
-      _azLoading=false;if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
+
+    // Handle API errors (invalid key, rate limit, etc.)
+    if(d.status==='ERROR'||d.status==='NOT_AUTHORIZED'||!d.results||!d.results.length){
+      let errMsg='No candle data returned.';
+      if(d.status==='NOT_AUTHORIZED'||d.error?.toLowerCase().includes('auth')){
+        errMsg='Invalid Polygon key — tap 📡 Data Key to update it.';
+      } else if(d.status==='ERROR'){
+        errMsg=d.error||'Polygon API error. Try again.';
+      } else if(!d.results||!d.results.length){
+        errMsg='No data for this timeframe. Market may be closed.';
+      }
+      if(wrap)wrap.innerHTML=`<div class="az-chart-loading" style="color:#E05252">${errMsg}</div>`;
+      _azLoading=false;
+      if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
       return;
     }
-    // Twelve Data returns newest first — reverse to oldest first
-    // Filter out weekend candles (Saturday=6, Sunday=0) — flat/dead candles with no institutional activity
-    _azCandles=[...d.values].reverse().map(c=>({
-      t:new Date(c.datetime),
-      o:parseFloat(c.open),
-      h:parseFloat(c.high),
-      l:parseFloat(c.low),
-      c:parseFloat(c.close),
+
+    // ── Polygon returns results sorted asc (oldest→newest), t is Unix ms ──
+    _azCandles=d.results.map(c=>({
+      t:new Date(c.t),        // c.t = Unix ms timestamp
+      o:parseFloat(c.o),
+      h:parseFloat(c.h),
+      l:parseFloat(c.l),
+      c:parseFloat(c.c),
+    // Filter weekend candles — flat/dead, no institutional activity
     })).filter(c=>{const day=c.t.getDay();return day!==0&&day!==6;});
-    // Reset view state for fresh load — show last 100, 500 available to scroll left
+
+    if(!_azCandles.length){
+      if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">All candles filtered (weekend). Try a different timeframe.</div>';
+      _azLoading=false;
+      if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
+      return;
+    }
+
+    // Reset view state — show the most recent 60 candles, rest scrollable left
     _azViewState={offset:0,visible:60,yStretch:1.0,yPan:0};
     renderAZChart();
-    if(cc)cc.style.display='block';
+
     if(ac)ac.style.display='block';
     if(refBtn)refBtn.style.display='inline-flex';
+
     const lu=document.getElementById('az-last-updated');
-    if(lu)lu.textContent='Updated '+new Date().toLocaleTimeString();
-    // Update price display
+    if(lu)lu.textContent='Updated '+new Date().toLocaleTimeString()+' · Polygon.io';
+
+    // Price display — last closed candle vs previous
     const last=_azCandles[_azCandles.length-1];
-    const prev=_azCandles[_azCandles.length-2];
+    const prev=_azCandles[_azCandles.length-2]||last;
     const chg=last.c-prev.c;
     const pd=document.getElementById('az-price-display');
     if(pd){
       const priceCol=chg>=0?'#2DB87C':'#E05252';
-      pd.innerHTML='<span style="color:'+priceCol+'">'+last.c.toFixed(2)+'</span> <span style="font-size:9px;color:'+priceCol+';margin-left:4px">'+(chg>=0?'+':'')+chg.toFixed(2)+'</span>';
+      pd.innerHTML=
+        `<span style="color:${priceCol}">${last.c.toFixed(2)}</span> `+
+        `<span style="font-size:9px;color:${priceCol};margin-left:4px">${chg>=0?'+':''}${chg.toFixed(2)}</span>`;
     }
+
     const ct=document.getElementById('az-chart-title');
     const tfLbl={'4h':'4H Macro','1h':'1H HTF','15min':'15M Entry','5min':'5M Precision'}[_azTF]||_azTF;
     if(ct)ct.textContent='XAU/USD · '+tfLbl;
-    // Pre-session readout update
+
     updatePresessionReadout();
+
   }catch(e){
-    if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">Network error. Check connection.</div>';
+    if(wrap)wrap.innerHTML=`<div class="az-chart-loading" style="color:#E05252">Network error — check your connection and try again.</div>`;
   }
+
   _azLoading=false;
   if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
 }
@@ -5179,11 +5316,11 @@ function renderAZChart(){
   const rightBreath=off===0?Math.floor(n*0.08):0;
   const candleW=Math.max(2,Math.floor(cW/(n+rightBreath))-1);
 
-  // ── Price range with yStretch and yPan ──
+  // ── Price range with yStretch ──
   const allH=display.map(c=>c.h),allL=display.map(c=>c.l);
   const rawMin=Math.min(...allL),rawMax=Math.max(...allH);
   const rawRange=rawMax-rawMin||1;
-  const center=(rawMax+rawMin)/2 + (_azViewState.yPan||0)*rawRange;
+  const center=(rawMax+rawMin)/2;
   const halfRange=(rawRange/2+rawRange*0.05)/_azViewState.yStretch;
   let minP=center-halfRange,maxP=center+halfRange;
   const totalRange=maxP-minP;
@@ -5192,7 +5329,7 @@ function renderAZChart(){
   const xS=i=>PAD.l+(i/n)*cW+(candleW/2);
 
   // Update y-scale cache so tap handlers can convert pixel→price/candle without re-rendering
-  _azYScale={minP,maxP,H,PAD,cW,cH,n,startIdx,rawRange};
+  _azYScale={minP,maxP,H,PAD,cW,cH,n,startIdx};
 
   // ── Y-axis grid + labels ──
   let yLabels='',yGrids='';
@@ -5283,9 +5420,8 @@ function renderAZChart(){
     if(relIdx>0&&relIdx<n) x1=PAD.l+(relIdx/n)*cW;
     else if(relIdx>=n) return; // anchor is to the right of view (shouldn't happen normally)
     const x2=W-PAD.r;
-    // Zone line — solid when locked, dashed when unlocked (draggable)
-    const lzDashAttr=lz.locked?'':' stroke-dasharray="4,3"';
-    manualLZsvg+=`<line x1="${x1.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${col}" stroke-width="${lz.locked?'2':'1.6'}"${lzDashAttr} opacity="${lz.locked?'1':'0.85'}"/>`;
+    // Zone line
+    manualLZsvg+=`<line x1="${x1.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${col}" stroke-width="1.6"/>`;
     // Price label pill on right axis
     manualLZsvg+=`<rect x="${(x2+1).toFixed(1)}" y="${(y-7).toFixed(1)}" width="47" height="14" rx="2.5" fill="${bgCol}" stroke="${bdrCol}" stroke-width="0.8"/>`;
     manualLZsvg+=`<text x="${(x2+4.5).toFixed(1)}" y="${(y+4).toFixed(1)}" font-size="7.5" fill="${col}" font-family="DM Mono,monospace" font-weight="700">${lz.price.toFixed(2)}</text>`;
@@ -5347,20 +5483,6 @@ function doXScale(x){
   const newVis=Math.max(10,Math.min(_azDS.startVisible+delta,_azCandles.length));
   if(newVis!==_azViewState.visible){_azViewState.visible=newVis;_azScheduleRender();}
 }
-function doYPan(y){
-  // Convert pixel drag distance to a yPan fraction shift
-  const dy=_azDS.startY-y;  // positive dy = dragging up = price moves up
-  const rng=_azYScale.rawRange||1;
-  const pxRange=_azYScale.cH||262;
-  // How many raw-range fractions per pixel
-  const stretchedRange=(rng/2+rng*0.05)/(_azViewState.yStretch||1)*2;
-  const fracPerPx=stretchedRange/(pxRange*rng);
-  const newPan=_azDS.startYPan+dy*fracPerPx;
-  if(Math.abs(newPan-(_azViewState.yPan||0))>0.0005){
-    _azViewState.yPan=newPan;
-    _azScheduleRender();
-  }
-}
 
 // ── Element-level interaction — re-attached each render (safe, element is rebuilt) ──
 function attachAZInteraction(){
@@ -5392,16 +5514,14 @@ function attachAZInteraction(){
   function panTouchMove(e){
     e.preventDefault();
     const {x,y}=getXY(e);
-    const adx=Math.abs(x-_azDS.startX),ady=Math.abs(y-_azDS.startY);
     // 12px threshold — mobile fingers always drift a few pixels even on a clean tap
-    if(adx>12||ady>12)_azDS.tapMoved=true;
+    if(Math.abs(x-_azDS.startX)>12||Math.abs(y-_azDS.startY)>12)_azDS.tapMoved=true;
     if(_azDS.draggingLZ){
       const clientY=e.touches?e.touches[0].clientY:e.clientY;
       dragLZTo(clientY);return;
     }
-    if(!_azDS.tapMoved)return;
-    // Route by dominant axis — horizontal = X pan, vertical = Y pan
-    if(adx>=ady){doPan(x);}else{doYPan(y);}
+    // Only pan if it's definitely a horizontal drag, not a tap
+    if(_azDS.tapMoved)doPan(x);
   }
   function panTouchEnd(e){
     panEl.style.cursor=_azMarkMode?'crosshair':'grab';
@@ -5469,11 +5589,10 @@ function initAZWindowListeners(){
 
   window.addEventListener('mousemove',function(e){
     if(!_azDS.active||e.buttons!==1)return;
-    const adx=Math.abs(e.clientX-_azDS.startX),ady=Math.abs(e.clientY-_azDS.startY);
-    if(adx>12||ady>12)_azDS.tapMoved=true;
+    if(Math.abs(e.clientX-_azDS.startX)>12||Math.abs(e.clientY-_azDS.startY)>12)_azDS.tapMoved=true;
     if(_azDS.mode==='pan'){
       if(_azDS.draggingLZ){dragLZTo(e.clientY);return;}
-      if(adx>=ady){doPan(e.clientX);}else{doYPan(e.clientY);}
+      doPan(e.clientX);
     }else if(_azDS.mode==='yscale'){
       doYScale(e.clientY);
     }else if(_azDS.mode==='xscale'){
@@ -5499,8 +5618,6 @@ function startPanOffset(){
   _azDS.startOffset=_azViewState.offset;
   _azDS.startYStretch=_azViewState.yStretch;
   _azDS.startVisible=_azViewState.visible;
-  _azDS.startYPan=_azViewState.yPan||0;
-  _azDS.startRawRange=_azYScale.rawRange||1;
 }
 
 // ── Convert client pixel position → chart price ──
@@ -5525,7 +5642,7 @@ function pixelToCandle(clientX){
   return Math.round(startIdx+fraction*n);
 }
 
-// ── Find LZ near a clientY tap (within 18px) — locked zones are skipped ──
+// ── Find LZ near a clientY tap (within 18px) ──
 function findLZNear(clientY){
   const wrap=document.getElementById('az-chart-wrap');
   if(!wrap||!_manualLZs.length)return null;
@@ -5534,7 +5651,6 @@ function findLZNear(clientY){
   const {minP,maxP,H,PAD,cH}=_azYScale;
   const totalRange=maxP-minP||1;
   for(const lz of _manualLZs){
-    if(lz.locked)continue; // locked zones cannot be dragged
     const lzY=PAD.t+cH*(1-(lz.price-minP)/totalRange);
     if(Math.abs(relY-lzY)<=18)return lz;
   }
@@ -5559,7 +5675,7 @@ function placeLZAtTap(clientX,clientY){
   if(price===null||!_azMarkMode)return;
   const anchorIdx=Math.max(0,Math.min(pixelToCandle(clientX),_azCandles.length-1));
   _azLZCounter++;
-  _manualLZs.push({id:_azLZCounter,price:Math.round(price*100)/100,type:_azMarkMode,anchorIdx,locked:false});
+  _manualLZs.push({id:_azLZCounter,price:Math.round(price*100)/100,type:_azMarkMode,anchorIdx});
   renderAZChart();
   renderLZPanel();
 }
@@ -5793,46 +5909,25 @@ async function runAIAnalysis(){
 LIQUIDITY ZONES (LZ):
 Swing highs, swing lows, equal highs, equal lows, and rejected wicks — these are where stop losses cluster. The algorithm targets these zones to collect liquidity before reversing.
 
-LIQUIDITY SWEEP — STRICT DEFINITION:
-A sweep is ONLY valid when ALL of these are true simultaneously:
-1. The candle WICK pierces a specific LZ level (the wick goes through or beyond it)
-2. The candle BODY closes on the OPPOSITE side of the level from the wick (body does NOT close beyond the swept level — it closes back inside)
-3. The overshoot is visible but moderate — for XAUUSD the wick should penetrate the level by at least $0.30 to $3.00 (not a micro-touch, not a full breakout)
-If the body closes BEYOND the LZ level, it is NOT a sweep — it is a breakout. Do NOT mark sweep as present in that case.
-If price only touches but does not meaningfully pierce the level, it is NOT a sweep.
-IMPORTANT: When trader-marked LZs are provided, you MUST reference one of those exact price levels as the swept zone. Name the level explicitly in your detail.
+LIQUIDITY SWEEP:
+Price hunts a LZ, overshoots it by 0.5 to 2 pips (the manipulation), then reverses hard. The sweep candle wick goes through the zone but the body does NOT close beyond it. This is the institutional footprint.
 
 ROUND NUMBERS (RN) — Tiered system:
 - Thousands: 3000, 4000, 5000
 - Hundreds: 3100, 3200, 3300 to 3900
 - Tens: 3210, 3220, 3230
 - Unit-5s: 3205, 3215, 3225
-A RN is ONLY valid AFTER: price taps it → manipulates (wick overshoot $0.30–$2.00) → closes a CLEAN rejection candle → does NOT return to re-hunt it before reversing. If price has already returned and tested the RN multiple times without reversing, it is no longer a valid round number anchor.
+A RN is only valid AFTER: price taps it → manipulates (slight overshoot 0.5–1.8 pips) → closes a CLEAN rejection candle → does NOT return to hunt it again.
 
 S/R LEVEL:
-A zone that earns its status — NOT drawn in advance. Price tests an area 2+ times WITHOUT closing through it. Once confirmed, a strong displacement candle closing BEYOND the zone is the continuation signal.
-
-REJECTION CANDLE — STRICT DEFINITION:
-ALL of these must be true:
-1. Wick length is at MINIMUM 2.5× the body size (e.g. body = $1.00, wick = $2.50+). If wick < 2.5× body, it is NOT a rejection candle — set present=false.
-2. The long wick is on the side facing the LZ or swept level (upper wick for bearish rejection, lower wick for bullish rejection)
-3. The candle body CLOSED clearly away from the swept level or LZ — the close must be at least 50% of the total candle range away from the wick extreme
-4. The candle is FULLY CLOSED — a currently forming candle does NOT count under any circumstances
-If ANY of these fail, present=false. Do not rationalize marginal cases as true.
-
-CONTINUATION CANDLE — STRICT DEFINITION:
-ALL of these must be true:
-1. The candle body is at MINIMUM 65% of the total candle range (high minus low). A small body with large wicks is NOT a continuation candle.
-2. The candle has CLOSED strongly in one direction (bullish or bearish) away from a swept LZ or S/R zone
-3. The candle is FULLY CLOSED — a currently forming candle does NOT count
-4. The close must be beyond (not just touching) the midpoint of the prior candle's range
+A zone that earns its status — NOT drawn in advance. Price tests an area 2+ times without breaking through. Once confirmed, a strong displacement candle closing BEYOND the zone is the continuation signal.
 
 SETUP PATTERNS:
 - Pattern A (Retest): LZ swept → price retraces to swept zone → zone holds on 2+ taps (S/R confirmed) → strong continuation candle closes beyond → STRIKE
 - Pattern B (Direct): LZ swept → immediate large body displacement candle closes strongly away → price keeps moving without retest → STRIKE
 
 EXPANSION TRAP (stay out):
-Price sweeps one LZ, creates new liquidity, sweeps that too before reversing. Signs: weak rejection candle (body too large), body closes BEYOND swept level, another obvious unswept LZ nearby, no RN anchor.
+Price sweeps one LZ, creates new liquidity, sweeps that too before reversing. Signs: weak rejection candle, body closes BEYOND the swept level, another obvious unswept LZ nearby, no RN anchor.
 
 SESSIONS (each is fully independent — Asia or NY, each has its own liquidity to hunt):
 Asia: 22:00–02:00 WAT | NY: 11:00–17:00 WAT
@@ -5845,9 +5940,9 @@ MANDATORY (trader action, not candle-detectable): Entry & SL Set
 
 ==== SETUP STATE DEFINITIONS ====
 WATCHING — LZ identified approaching, not yet swept. Observe only. Do NOT enter.
-ARMED — Sweep has happened per strict definition above. Awaiting candle confirmation (rejection or continuation). Patience required.
-STRIKE — Anchor confirmed + Confirmation candle CLOSED with strict criteria met. All confluences confirmed. Enter now.
-WAIT — Expansion trap likely OR sweep definition not cleanly met. Price may sweep more liquidity. Stay out.
+ARMED — Sweep has happened. Awaiting candle confirmation (rejection or continuation). Patience required.
+STRIKE — Anchor confirmed + Confirmation candle CLOSED. All confluences met. Enter now.
+WAIT — Expansion trap likely. Price may sweep more liquidity. Stay out.
 
 ==== MULTI-TIMEFRAME WORKFLOW (ToxikWick_Algo_Logic) ====
 The correct reading order is: 4H (macro direction) → 1H (intermediate bias + HTF liquidity zones) → 15M or 5M (entry confirmation).
@@ -5858,12 +5953,12 @@ ${_azTF==='4h'?'This is the MACRO view — read overall direction and major liqu
   'This is the PRECISION view — use only for fine-tuning entry after 15M confirmation is already clear.'}
 
 ==== CURRENT MARKET DATA ====
-Symbol: XAU/USD (Gold Spot) — price moves in dollars (e.g. $4693.42). One "pip" for this analysis = $0.10.
+Symbol: XAU/USD (Gold Spot)
 Chart Analyzed: ${tfLabel}
 Session: ${session} (WAT)
 Current Price: ${last.c.toFixed(2)}
-Recent Swing High (reference only): ${swH}
-Recent Swing Low (reference only): ${swL}
+Recent Swing High (reference): ${swH}
+Recent Swing Low (reference): ${swL}
 Round Numbers Near Price: ${nearRoundsText}
 
 ==== LIQUIDITY ZONES ====
@@ -5878,12 +5973,12 @@ ${historyContext}
 ==== RESPOND IN THIS EXACT JSON ONLY — no preamble, no markdown, no extra text ====
 {
   "confluences": {
-    "inst_displacement": {"present": true/false, "detail": "one sentence: describe the institutional footprint candle if visible — specify candle time, body size vs range, direction"},
-    "liquidity_sweep": {"present": true/false, "detail": "one sentence: name the EXACT LZ price that was swept, the direction, and the estimated pip overshoot. If no clean sweep happened, explain why and set present=false"},
-    "sr_level": {"present": true/false, "detail": "one sentence: describe the zone price, how many taps, and whether it held on the last test"},
-    "round_number": {"present": true/false, "detail": "one sentence: name the exact RN tier and price, confirm whether wick overshoot AND rejection is complete"},
-    "rejection_candle": {"present": true/false, "detail": "one sentence: state wick size vs body size ratio explicitly (e.g. wick=3.2× body), candle close position relative to level, candle time. If ratio < 2.5×, set present=false"},
-    "continuation_candle": {"present": true/false, "detail": "one sentence: state body/range ratio explicitly (e.g. body=72% of range), direction, candle time. If body < 65% of range, set present=false"}
+    "inst_displacement": {"present": true/false, "detail": "one sentence: describe the institutional footprint candle if visible"},
+    "liquidity_sweep": {"present": true/false, "detail": "one sentence: which level was swept, direction, and pip overshoot if visible"},
+    "sr_level": {"present": true/false, "detail": "one sentence: describe the zone, how many taps, and whether it held"},
+    "round_number": {"present": true/false, "detail": "one sentence: which RN tier, price, and whether manipulation+rejection is confirmed"},
+    "rejection_candle": {"present": true/false, "detail": "one sentence: wick size vs body, candle close position, level it rejected"},
+    "continuation_candle": {"present": true/false, "detail": "one sentence: Pattern A or B, body size, closing direction"}
   },
   "setup_state": "WATCHING or ARMED or STRIKE or WAIT",
   "sweep_count": "None or Single or Double",
@@ -5894,16 +5989,13 @@ ${historyContext}
   "sl_suggestion": "price level below/above swept LZ or N/A",
   "expansion_trap_risk": "Low or Medium or High",
   "summary": "2–3 sentences using ToxikWick_Algo_Logic language. State what the algorithm has done and what to do next.",
-  "missing": "one sentence: what specific price action needs to happen to trigger a STRIKE — be specific about price levels"
+  "missing": "one sentence: what specific price action needs to happen to trigger a STRIKE"
 }
 
-CRITICAL ACCURACY RULES — DO NOT DEVIATE:
-1. liquidity_sweep present=true ONLY if the wick CLEARLY pierced a level AND the body closed back inside. If the body closed beyond the level, that is a breakout — set present=false.
-2. rejection_candle present=true ONLY if wick is verifiably ≥2.5× body size. State the ratio in your detail. If you cannot confirm this ratio from the candle data, set present=false.
-3. continuation_candle present=true ONLY if body is verifiably ≥65% of the high-minus-low range. State the percentage in your detail. A forming candle = present=false always.
-4. Grade MUST match the exact count of true confluences. Count carefully before assigning.
-5. When trader LZs are marked, reference them by their exact prices. Do not invent new swing levels when trader zones exist.
-6. When in doubt between ARMED and WATCHING, choose WATCHING. When in doubt between STRIKE and ARMED, choose ARMED.`;
+CRITICAL RULES:
+1. rejection_candle present=true ONLY if the wick clearly dominates the body (wick at least 2x body size) AND candle closed back inside or away from the level. If your detail says the body is too large or rejection is unclear, set present=false.
+2. continuation_candle present=true ONLY if a large body candle (body >60% of total candle range) has CLOSED strongly away from an S/R zone or swept LZ. A forming candle does NOT count.
+3. Grade MUST match the exact confluence count. Do not assign X when 3+ confluences are present.`;
   try{
     // Direct REST fetch — no SDK dependency, no version conflicts
     const apiUrl=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GKEY}`;
@@ -5967,7 +6059,7 @@ CRITICAL ACCURACY RULES — DO NOT DEVIATE:
 function renderAnalysisResult(r){
   const out=document.getElementById('az-analysis-output');
   if(!out||!r)return;
-  // metCount is the count AFTER all safety net corrections (done in runAIAnalysis before calling this)
+  // Recalculate metCount after safety net corrections
   const finalCount=Object.values(r.confluences||{}).filter(v=>v&&v.present).length;
   const gradeClass={'A':'az-grade-A','B':'az-grade-B','C':'az-grade-C','X':'az-grade-X'}[r.grade]||'az-grade-X';
   const dirCol=r.direction==='Long'?'#2DB87C':r.direction==='Short'?'#E05252':'#555';
@@ -6009,42 +6101,20 @@ function renderAnalysisResult(r){
   const correctGrade=metCount>=5?'A':metCount>=3?'B':metCount>=2?'C':'X';
   r.grade=correctGrade;
 
-  // Client-side safety net: rejection candle — catch any case where AI marked true despite bad ratio
+  // Client-side safety net: rejection candle present=false if detail mentions body too large / unclear
   const rejConf=r.confluences?.rejection_candle;
   if(rejConf&&rejConf.present&&rejConf.detail){
     const d=rejConf.detail.toLowerCase();
-    // Reject if detail contains any signal of a marginal or failed rejection
-    const badSignals=['body is not','not small','unclear','not a clean','body too','not clean',
-                      'small wick','body dominates','body larger','forming','not closed',
-                      'wick is not','insufficient','weak wick','minor','barely'];
-    if(badSignals.some(s=>d.includes(s))) rejConf.present=false;
-    // Also check for explicit ratio — if ratio mentioned and < 2.5×, reject
-    const ratioMatch=d.match(/wick[^0-9]*([0-9]+\.?[0-9]*)[\s×x*]/);
-    if(ratioMatch){const ratio=parseFloat(ratioMatch[1]);if(ratio<2.5)rejConf.present=false;}
+    if(d.includes('body is not')||d.includes('not small')||d.includes('unclear')||d.includes('not a clean')||d.includes('body too')||d.includes('not clean'))
+      rejConf.present=false;
   }
   // Same check for continuation candle
   const contConf=r.confluences?.continuation_candle;
   if(contConf&&contConf.present&&contConf.detail){
     const d=contConf.detail.toLowerCase();
-    const badSignals=['no clear','not closed','forming','not strong','small body','body is small',
-                      'indecisive','not a continuation','weak body','body not','doji','spinning'];
-    if(badSignals.some(s=>d.includes(s))) contConf.present=false;
-    // Check body percentage — if stated and < 65%, reject
-    const pctMatch=d.match(/body[^0-9]*([0-9]+)%/);
-    if(pctMatch){const pct=parseFloat(pctMatch[1]);if(pct<65)contConf.present=false;}
+    if(d.includes('no clear')||d.includes('not closed')||d.includes('forming')||d.includes('not strong'))
+      contConf.present=false;
   }
-  // Liquidity sweep safety: if detail says body closed beyond, force false
-  const swpConf=r.confluences?.liquidity_sweep;
-  if(swpConf&&swpConf.present&&swpConf.detail){
-    const d=swpConf.detail.toLowerCase();
-    const badSignals=['body closed beyond','breakout','closed through','no sweep','did not sweep',
-                      'not a sweep','price only touched','micro-touch','not clearly','unclear sweep'];
-    if(badSignals.some(s=>d.includes(s))) swpConf.present=false;
-  }
-
-  // Recalculate grade after safety nets (some may have flipped to false)
-  const finalMetCount=Object.values(r.confluences||{}).filter(v=>v&&v.present).length;
-  r.grade=finalMetCount>=5?'A':finalMetCount>=3?'B':finalMetCount>=2?'C':'X';
 
   const trapCol=r.expansion_trap_risk==='High'?'#E05252':r.expansion_trap_risk==='Medium'?'#C9A84C':'#2DB87C';
   const curTFLabel={'4h':'4H · Macro','1h':'1H · HTF Bias','15min':'15M · Entry','5min':'5M · Precision'}[_azTF]||_azTF;
@@ -6146,14 +6216,6 @@ window.removeManualLZ=function(id){
   renderLZPanel();
 };
 
-window.toggleLZLock=function(id){
-  const lz=_manualLZs.find(l=>l.id===id);
-  if(!lz)return;
-  lz.locked=!lz.locked;
-  renderAZChart(); // re-draw so visual locked state updates
-  renderLZPanel();
-};
-
 window.clearManualLZs=function(){
   if(!_manualLZs.length)return;
   _manualLZs=[];
@@ -6184,19 +6246,11 @@ function renderLZPanel(){
     `<div style="font-size:8px;color:#2A2A2A;letter-spacing:.1em;text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:5px">Marked Zones · drag line on chart to adjust</div>`+
     sorted.map(lz=>{
       const col=lz.type==='H'?'#E05252':'#F0A0A0';
-      const bg=lz.locked
-        ?(lz.type==='H'?'rgba(224,82,82,.13)':'rgba(224,82,82,.08)')
-        :(lz.type==='H'?'rgba(224,82,82,.07)':'rgba(224,82,82,.04)');
+      const bg=lz.type==='H'?'rgba(224,82,82,.07)':'rgba(224,82,82,.04)';
       const bdr=lz.type==='H'?'rgba(224,82,82,.22)':'rgba(224,82,82,.15)';
-      const lockIco=lz.locked?'🔒':'🔓';
-      const lockTitle=lz.locked?'Locked — click to unlock':'Unlocked — click to lock';
-      const priceOpacity=lz.locked?'1':'0.85';
       return `<div style="display:flex;align-items:center;gap:7px;padding:7px 9px;background:${bg};border:1px solid ${bdr};border-radius:5px;margin-bottom:4px">`+
         `<span style="font-size:9px;font-weight:700;color:${col};font-family:'DM Mono',monospace;padding:1px 6px;border:1px solid ${bdr};border-radius:3px;flex-shrink:0">${lz.type}</span>`+
-        `<span style="font-size:13px;font-weight:700;color:${col};font-family:'DM Mono',monospace;flex:1;opacity:${priceOpacity}">${lz.price.toFixed(2)}</span>`+
-        // Lock toggle button
-        `<button onclick="toggleLZLock(${lz.id})" title="${lockTitle}" style="background:${lz.locked?'rgba(201,168,76,.12)':'transparent'};border:1px solid ${lz.locked?'rgba(201,168,76,.35)':'rgba(224,82,82,.2)'};border-radius:4px;font-size:12px;padding:3px 8px;cursor:pointer;flex-shrink:0;line-height:1">${lockIco}</button>`+
-        // Remove button
+        `<span style="font-size:13px;font-weight:700;color:${col};font-family:'DM Mono',monospace;flex:1">${lz.price.toFixed(2)}</span>`+
         `<button onclick="removeManualLZ(${lz.id})" style="background:transparent;border:1px solid rgba(224,82,82,.3);border-radius:4px;color:#E05252;font-size:11px;padding:3px 10px;cursor:pointer;font-family:'DM Mono',monospace;flex-shrink:0">✕</button>`+
       `</div>`;
     }).join('');
@@ -6208,7 +6262,15 @@ function renderLZPanel(){
 function initAnalyzer(){
   azUpdateClock();
   if(!window._azClockInterval)window._azClockInterval=setInterval(azUpdateClock,30000);
-  // If no Gemini key saved yet, show the key setup panel immediately
+
+  // If no Polygon key saved — show data key setup inside chart card immediately
+  if(!getPolygonKey()){
+    const cc=document.getElementById('az-chart-card');
+    if(cc)cc.style.display='block';
+    azShowPolygonKeySetup(false);
+  }
+
+  // If no Gemini AI key saved — show AI key setup in analysis card
   if(!getGeminiKey()){
     const card=document.getElementById('az-analysis-card');
     if(card)card.style.display='';
