@@ -994,8 +994,8 @@ select option{background:#181818;color:#E2DDD6}
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
         <div id="az-session-indicator" style="font-size:9px;font-family:'DM Mono',monospace;text-align:right"></div>
         <div style="display:flex;gap:5px">
-          <button onclick="azPromptChangePolygonKey()" title="Polygon.io data key" style="font-size:9px;color:#444;background:none;border:1px solid #1C1C1C;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;white-space:nowrap">📡 Data Key</button>
-          <button onclick="azPromptChangeKey()" title="Gemini AI key" style="font-size:9px;color:#444;background:none;border:1px solid #1C1C1C;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;white-space:nowrap">🔑 AI Key</button>
+          <button onclick="azPromptChangeChartKey()" title="Alpha Vantage chart data key" style="font-size:9px;color:#444;background:none;border:1px solid #1C1C1C;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;white-space:nowrap">📡 Data Key</button>
+          <button onclick="azPromptChangeKey()" title="Gemini AI analysis key" style="font-size:9px;color:#444;background:none;border:1px solid #1C1C1C;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;white-space:nowrap">🔑 AI Key</button>
         </div>
       </div>
     </div>
@@ -1027,8 +1027,8 @@ select option{background:#181818;color:#E2DDD6}
 
     <!-- Chart -->
     <div class="az-card" id="az-chart-card" style="display:none">
-      <!-- Polygon key setup — shown inline when key is missing -->
-      <div id="az-polygon-key-card" style="display:none"></div>
+      <!-- Chart data key setup — shown inline when key is missing -->
+      <div id="az-chartkey-card" style="display:none"></div>
       <div id="az-chart-inner">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div class="az-hdr" style="margin-bottom:0" id="az-chart-title">XAUUSD</div>
@@ -1191,8 +1191,8 @@ select option{background:#181818;color:#E2DDD6}
 const SB_URL='https://pewkiwknniphfwhnoxsv.supabase.co';
 const SB_KEY='sb_publishable_l4PTYKlCiPoVGkQZj0loWQ_JMHGkGd3';
 const AUTH_URL=SB_URL+'/auth/v1';
-// Chart data — Polygon.io. Key stored in localStorage by user; never hardcoded.
-const POLYGON_URL='https://api.polygon.io';
+// Chart data — Alpha Vantage. Key stored in localStorage by user; never hardcoded.
+const AV_URL='https://www.alphavantage.co/query';
 // Gemini API key — stored in localStorage by user; never hardcoded in source
 const GEMINI_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 const STORAGE_URL=SB_URL+'/storage/v1';
@@ -5095,15 +5095,14 @@ function selectTF(btn){
   if(_azCandles.length)loadAnalyzerChart();
 }
 
-// ── Polygon.io key management ──────────────────────────────────────────────────
-function getPolygonKey(){try{return localStorage.getItem('tw_polygon_key')||'';}catch(e){return '';}}
-function _savePolygonKey(k){try{localStorage.setItem('tw_polygon_key',k);}catch(e){}}
-function _clearPolygonKey(){try{localStorage.removeItem('tw_polygon_key');}catch(e){}}
+// ── Alpha Vantage Chart Key Management ────────────────────────────────────────
+function getChartKey(){try{return localStorage.getItem('tw_av_key')||'';}catch(e){return '';}}
+function _saveChartKey(k){try{localStorage.setItem('tw_av_key',k);}catch(e){}}
+function _clearChartKey(){try{localStorage.removeItem('tw_av_key');}catch(e){}}
 
-// Show Polygon key setup inside the chart card (inline, same UX pattern as Gemini key)
-function azShowPolygonKeySetup(isChange){
+function azShowChartKeySetup(isChange){
   const card=document.getElementById('az-chart-card');
-  const keyCard=document.getElementById('az-polygon-key-card');
+  const keyCard=document.getElementById('az-chartkey-card');
   const inner=document.getElementById('az-chart-inner');
   if(!keyCard)return;
   if(card)card.style.display='block';
@@ -5113,69 +5112,84 @@ function azShowPolygonKeySetup(isChange){
     `<div class="az-key-setup">`+
       `<div style="font-size:24px;margin-bottom:10px">📡</div>`+
       `<div style="font-size:13px;font-weight:700;color:#E2DDD6;margin-bottom:5px">`+
-        (isChange?'Update Polygon.io Data Key':'Set Your Polygon.io Key')+
+        (isChange?'Update Chart Data Key':'Set Your Alpha Vantage Key')+
       `</div>`+
       `<div style="font-size:10px;color:#555;font-family:'DM Mono',monospace;line-height:1.7;margin-bottom:4px">`+
-        `Powers the XAUUSD candlestick chart.<br>Stored on this device only — never in source code.`+
+        `Powers the XAU/USD candlestick chart.<br>Stored on this device only — never in source code.`+
       `</div>`+
-      `<input class="az-key-input" id="az-polygon-key-input" type="password" `+
-        `placeholder="Paste your Polygon.io key here" autocomplete="off" `+
-        `onkeydown="if(event.key==='Enter')azSavePolygonKey()">`+
-      `<div id="az-polygon-key-err" style="font-size:10px;color:#E05252;font-family:'DM Mono',monospace;min-height:14px;margin-bottom:6px"></div>`+
+      `<input class="az-key-input" id="az-chartkey-input" type="password" `+
+        `placeholder="Paste your Alpha Vantage key here" autocomplete="off" `+
+        `onkeydown="if(event.key==='Enter')azSaveChartKey()">`+
+      `<div id="az-chartkey-err" style="font-size:10px;color:#E05252;font-family:'DM Mono',monospace;min-height:14px;margin-bottom:6px"></div>`+
       `<div style="display:flex;gap:7px">`+
-        `<button class="az-btn az-btn-primary" style="flex:1;padding:10px" onclick="azSavePolygonKey()">Save & Load Chart</button>`+
-        (isChange?`<button class="az-btn az-btn-ghost" onclick="azCancelPolygonKeyChange()">Cancel</button>`:'')+
+        `<button class="az-btn az-btn-primary" style="flex:1;padding:10px" onclick="azSaveChartKey()">Save & Load Chart</button>`+
+        (isChange?`<button class="az-btn az-btn-ghost" onclick="azCancelChartKeyChange()">Cancel</button>`:'')+
       `</div>`+
       `<div style="margin-top:12px;font-size:9px;color:#2A2A2A;font-family:'DM Mono',monospace">`+
-        `Free key at <span style="color:#C9A84C">polygon.io/dashboard/api-keys</span>`+
+        `Free key at <span style="color:#C9A84C">alphavantage.co/support/#api-key</span>`+
       `</div>`+
     `</div>`;
-  setTimeout(()=>{const i=document.getElementById('az-polygon-key-input');if(i)i.focus();},80);
+  setTimeout(()=>{const i=document.getElementById('az-chartkey-input');if(i)i.focus();},80);
 }
 
-function azSavePolygonKey(){
-  const inp=document.getElementById('az-polygon-key-input');
-  const errEl=document.getElementById('az-polygon-key-err');
+function azSaveChartKey(){
+  const inp=document.getElementById('az-chartkey-input');
+  const errEl=document.getElementById('az-chartkey-err');
   if(!inp)return;
   const k=inp.value.trim();
   if(!k){if(errEl)errEl.textContent='Key cannot be empty.';return;}
-  if(k.length<10){
+  if(k.length<8){
     if(errEl)errEl.textContent='Key looks too short — check and paste again.';
-    inp.style.borderColor='rgba(224,82,82,.45)';
-    return;
+    inp.style.borderColor='rgba(224,82,82,.45)';return;
   }
-  _savePolygonKey(k);
-  // Hide key setup, show chart inner, then load
-  const keyCard=document.getElementById('az-polygon-key-card');
+  _saveChartKey(k);
+  const keyCard=document.getElementById('az-chartkey-card');
   const inner=document.getElementById('az-chart-inner');
   if(keyCard)keyCard.style.display='none';
   if(inner)inner.style.display='';
-  flash('ok','Polygon key saved. Loading chart...');
+  flash('ok','Chart data key saved. Loading...');
   loadAnalyzerChart();
 }
 
-function azPromptChangePolygonKey(){
-  azShowPolygonKeySetup(true);
-}
+function azPromptChangeChartKey(){azShowChartKeySetup(true);}
 
-function azCancelPolygonKeyChange(){
-  const keyCard=document.getElementById('az-polygon-key-card');
+function azCancelChartKeyChange(){
+  const keyCard=document.getElementById('az-chartkey-card');
   const inner=document.getElementById('az-chart-inner');
   if(keyCard)keyCard.style.display='none';
   if(inner)inner.style.display='';
 }
-// ── END Polygon Key Management ─────────────────────────────────────────────────
+// ── END Chart Key Management ───────────────────────────────────────────────────
 
-// ── Fetch candles from Polygon.io ──
+// ── 4H aggregation — group hourly candles into 4-hour blocks ──
+function aggregate4H(candles){
+  const groups={};
+  for(const c of candles){
+    // Group by UTC: floor hour to nearest 4 (00,04,08,12,16,20)
+    const d=c.t;
+    const blockH=Math.floor(d.getUTCHours()/4)*4;
+    const key=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),blockH);
+    if(!groups[key]){
+      groups[key]={t:new Date(key),o:c.o,h:c.h,l:c.l,c:c.c};
+    } else {
+      groups[key].h=Math.max(groups[key].h,c.h);
+      groups[key].l=Math.min(groups[key].l,c.l);
+      groups[key].c=c.c; // last close in block
+    }
+  }
+  return Object.values(groups).sort((a,b)=>a.t-b.t);
+}
+
+// ── Fetch candles from Alpha Vantage ──
 async function loadAnalyzerChart(){
   if(_azLoading)return;
 
-  // Check for Polygon key first — show setup if missing
-  const PKEY=getPolygonKey();
-  if(!PKEY){
+  // Check chart key — show setup if missing
+  const AVKEY=getChartKey();
+  if(!AVKEY){
     const cc=document.getElementById('az-chart-card');
     if(cc)cc.style.display='block';
-    azShowPolygonKeySetup(false);
+    azShowChartKeySetup(false);
     return;
   }
 
@@ -5184,11 +5198,11 @@ async function loadAnalyzerChart(){
   const refBtn=document.getElementById('az-refresh-btn');
   if(loadBtn){loadBtn.disabled=true;loadBtn.textContent='Loading...';}
 
-  // Show chart card, hide analysis until fresh data arrives
+  // Show chart card, hide key setup, hide analysis until fresh data arrives
   const cc=document.getElementById('az-chart-card');
   const ac=document.getElementById('az-analysis-card');
   const inner=document.getElementById('az-chart-inner');
-  const keyCard=document.getElementById('az-polygon-key-card');
+  const keyCard=document.getElementById('az-chartkey-card');
   if(cc)cc.style.display='block';
   if(keyCard)keyCard.style.display='none';
   if(inner)inner.style.display='';
@@ -5196,66 +5210,75 @@ async function loadAnalyzerChart(){
   document.getElementById('az-analysis-output').innerHTML=
     '<div style="font-size:11px;color:#333;font-family:DM Mono,monospace;text-align:center;padding:16px 0">Tap Run Analysis to check confluences on the loaded candles</div>';
 
-  // Show loading state in chart area
   const wrap=document.getElementById('az-chart-wrap');
-  if(wrap)wrap.innerHTML='<div class="az-chart-loading">Fetching Polygon.io candles...</div>';
+  if(wrap)wrap.innerHTML='<div class="az-chart-loading">Fetching XAU/USD candles...</div>';
 
   try{
-    // ── Timeframe → Polygon multiplier + timespan ──
-    // Polygon endpoint: /v2/aggs/ticker/{ticker}/range/{mult}/{span}/{from}/{to}
+    // ── Alpha Vantage timeframe mapping ──
+    // 4H uses 60min data aggregated client-side into 4-hour blocks
     const tfMap={
-      '4h' :{mult:4 ,span:'hour'  ,days:210},  // 210 days → ~600 4H bars
-      '1h' :{mult:1 ,span:'hour'  ,days:90 },  // 90 days  → ~600 1H bars
-      '15min':{mult:15,span:'minute',days:25},  // 25 days  → ~600 15M bars
-      '5min' :{mult:5 ,span:'minute',days:10},  // 10 days  → ~600 5M bars
+      '4h' :{fn:'FX_INTRADAY',interval:'60min', tsKey:'Time Series FX (60min)', is4H:true },
+      '1h' :{fn:'FX_INTRADAY',interval:'60min', tsKey:'Time Series FX (60min)', is4H:false},
+      '15min':{fn:'FX_INTRADAY',interval:'15min', tsKey:'Time Series FX (15min)', is4H:false},
+      '5min' :{fn:'FX_INTRADAY',interval:'5min',  tsKey:'Time Series FX (5min)',  is4H:false},
     };
     const tf=tfMap[_azTF]||tfMap['1h'];
 
-    // Build date range — Polygon uses YYYY-MM-DD
-    const toDate=new Date();
-    const fromDate=new Date(Date.now()-tf.days*86400000);
-    const fmt=d=>d.toISOString().split('T')[0];
-
-    const url=`${POLYGON_URL}/v2/aggs/ticker/C:XAUUSD/range/${tf.mult}/${tf.span}/${fmt(fromDate)}/${fmt(toDate)}`+
-              `?adjusted=true&sort=asc&limit=600&apiKey=${PKEY}`;
+    const url=`${AV_URL}?function=${tf.fn}&from_symbol=XAU&to_symbol=USD`+
+              `&interval=${tf.interval}&outputsize=full&apikey=${AVKEY}`;
 
     const r=await fetch(url);
     const d=await r.json();
 
-    // Handle API errors (invalid key, rate limit, etc.)
-    if(d.status==='ERROR'||d.status==='NOT_AUTHORIZED'||!d.results||!d.results.length){
-      let errMsg='No candle data returned.';
-      if(d.status==='NOT_AUTHORIZED'||d.error?.toLowerCase().includes('auth')){
-        errMsg='Invalid Polygon key — tap 📡 Data Key to update it.';
-      } else if(d.status==='ERROR'){
-        errMsg=d.error||'Polygon API error. Try again.';
-      } else if(!d.results||!d.results.length){
-        errMsg='No data for this timeframe. Market may be closed.';
-      }
+    // ── Error handling ──
+    if(d['Error Message']||d['Note']||d['Information']){
+      let errMsg='Failed to load candles.';
+      if(d['Error Message'])errMsg='Invalid Alpha Vantage key — tap 📡 Data Key to update.';
+      else if(d['Note']||d['Information'])errMsg='API rate limit reached (25/day). Try again tomorrow or upgrade at alphavantage.co';
       if(wrap)wrap.innerHTML=`<div class="az-chart-loading" style="color:#E05252">${errMsg}</div>`;
       _azLoading=false;
       if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
       return;
     }
 
-    // ── Polygon returns results sorted asc (oldest→newest), t is Unix ms ──
-    _azCandles=d.results.map(c=>({
-      t:new Date(c.t),        // c.t = Unix ms timestamp
-      o:parseFloat(c.o),
-      h:parseFloat(c.h),
-      l:parseFloat(c.l),
-      c:parseFloat(c.c),
-    // Filter weekend candles — flat/dead, no institutional activity
-    })).filter(c=>{const day=c.t.getDay();return day!==0&&day!==6;});
-
-    if(!_azCandles.length){
-      if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">All candles filtered (weekend). Try a different timeframe.</div>';
+    // ── Find the time series object (key name depends on interval) ──
+    const tsData=d[tf.tsKey]||d[Object.keys(d).find(k=>k.startsWith('Time Series'))||''];
+    if(!tsData||!Object.keys(tsData).length){
+      if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">No candle data returned. Check your key or try again.</div>';
       _azLoading=false;
       if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
       return;
     }
 
-    // Reset view state — show the most recent 60 candles, rest scrollable left
+    // ── Parse: Alpha Vantage timestamps are US Eastern — we use them as-is for display ──
+    // Sort oldest → newest (AV returns newest first)
+    let candles=Object.entries(tsData)
+      .sort(([a],[b])=>new Date(a)-new Date(b))
+      .map(([ts,v])=>({
+        t:new Date(ts),
+        o:parseFloat(v['1. open']),
+        h:parseFloat(v['2. high']),
+        l:parseFloat(v['3. low']),
+        c:parseFloat(v['4. close']),
+      }))
+      // Filter weekend candles
+      .filter(c=>{const day=c.t.getDay();return day!==0&&day!==6;});
+
+    // ── For 4H: aggregate hourly candles into 4-hour blocks ──
+    if(tf.is4H)candles=aggregate4H(candles);
+
+    // Keep the most recent 600 candles
+    if(candles.length>600)candles=candles.slice(candles.length-600);
+
+    if(!candles.length){
+      if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">No candles after filtering. Try a different timeframe.</div>';
+      _azLoading=false;if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
+      return;
+    }
+
+    _azCandles=candles;
+
+    // Reset view — show most recent 60 candles, rest scrollable left
     _azViewState={offset:0,visible:60,yStretch:1.0,yPan:0};
     renderAZChart();
 
@@ -5263,9 +5286,9 @@ async function loadAnalyzerChart(){
     if(refBtn)refBtn.style.display='inline-flex';
 
     const lu=document.getElementById('az-last-updated');
-    if(lu)lu.textContent='Updated '+new Date().toLocaleTimeString()+' · Polygon.io';
+    if(lu)lu.textContent='Updated '+new Date().toLocaleTimeString()+' · Alpha Vantage';
 
-    // Price display — last closed candle vs previous
+    // Price display
     const last=_azCandles[_azCandles.length-1];
     const prev=_azCandles[_azCandles.length-2]||last;
     const chg=last.c-prev.c;
@@ -5276,7 +5299,6 @@ async function loadAnalyzerChart(){
         `<span style="color:${priceCol}">${last.c.toFixed(2)}</span> `+
         `<span style="font-size:9px;color:${priceCol};margin-left:4px">${chg>=0?'+':''}${chg.toFixed(2)}</span>`;
     }
-
     const ct=document.getElementById('az-chart-title');
     const tfLbl={'4h':'4H Macro','1h':'1H HTF','15min':'15M Entry','5min':'5M Precision'}[_azTF]||_azTF;
     if(ct)ct.textContent='XAU/USD · '+tfLbl;
@@ -5284,7 +5306,7 @@ async function loadAnalyzerChart(){
     updatePresessionReadout();
 
   }catch(e){
-    if(wrap)wrap.innerHTML=`<div class="az-chart-loading" style="color:#E05252">Network error — check your connection and try again.</div>`;
+    if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">Network error — check your connection and try again.</div>';
   }
 
   _azLoading=false;
@@ -5312,9 +5334,9 @@ function renderAZChart(){
   if(!n)return;
 
   // Breathing room: reserve 8% of chart width empty on the right when at offset=0
-  // This prevents candles from being stuck flush against the right edge
+  // Cap candleW to 20px max — prevents giant candles when few bars are returned
   const rightBreath=off===0?Math.floor(n*0.08):0;
-  const candleW=Math.max(2,Math.floor(cW/(n+rightBreath))-1);
+  const candleW=Math.max(2,Math.min(20,Math.floor(cW/(n+rightBreath))-1));
 
   // ── Price range with yStretch ──
   const allH=display.map(c=>c.h),allL=display.map(c=>c.l);
@@ -6262,14 +6284,12 @@ function renderLZPanel(){
 function initAnalyzer(){
   azUpdateClock();
   if(!window._azClockInterval)window._azClockInterval=setInterval(azUpdateClock,30000);
-
-  // If no Polygon key saved — show data key setup inside chart card immediately
-  if(!getPolygonKey()){
+  // If no chart data key saved — show Alpha Vantage key setup inside chart card
+  if(!getChartKey()){
     const cc=document.getElementById('az-chart-card');
     if(cc)cc.style.display='block';
-    azShowPolygonKeySetup(false);
+    azShowChartKeySetup(false);
   }
-
   // If no Gemini AI key saved — show AI key setup in analysis card
   if(!getGeminiKey()){
     const card=document.getElementById('az-analysis-card');
