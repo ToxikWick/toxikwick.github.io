@@ -5455,9 +5455,22 @@ function initLWChart(){
         return wh+':'+wm;
       },
     },
-    // LW handles ALL native scroll/zoom — our code only intercepts when dragging a zone line
-    handleScroll:{mouseWheel:true,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},
-    handleScale:{axisPressedMouseMove:true,mouseWheel:true,pinch:true},
+    // Full scroll/scale interaction:
+    // - horzTouchDrag: scroll candles left/right on touch
+    // - vertTouchDrag: pan price up/down on touch (was false — fixed)
+    // - axisPressedMouseMove.price: drag right axis to compress/expand price scale
+    // - axisPressedMouseMove.time: drag bottom axis to compress/expand time scale
+    handleScroll:{
+      mouseWheel:true,
+      pressedMouseMove:true,
+      horzTouchDrag:true,
+      vertTouchDrag:true,
+    },
+    handleScale:{
+      axisPressedMouseMove:{time:true,price:true},
+      mouseWheel:true,
+      pinch:true,
+    },
   });
 
   _lwSeries=_lwChart.addCandlestickSeries({
