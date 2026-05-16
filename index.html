@@ -5105,8 +5105,19 @@ const TD_SOURCES=[
 ];
 
 function getTDKey(){try{return localStorage.getItem('tw_td_key')||'';}catch(e){return '';}}
-// Default source is FOREX_COM — closest match to TradingView's XAU/USD data
-function getTDSource(){try{return localStorage.getItem('tw_td_source')||'FOREX_COM';}catch(e){return 'FOREX_COM';}}
+// Source migration: reset old FXCM default and empty-string default to FOREX_COM.
+// FXCM returns stale Saturday candles; FOREX_COM aligns with TradingView.
+function getTDSource(){
+  try{
+    const s=localStorage.getItem('tw_td_source');
+    // Migrate: if nothing saved, or user had the old empty OTC default, or had FXCM as default
+    if(!s||s==='FXCM'){
+      localStorage.setItem('tw_td_source','FOREX_COM');
+      return 'FOREX_COM';
+    }
+    return s;
+  }catch(e){return 'FOREX_COM';}
+}
 function getTDOffset(){try{return parseFloat(localStorage.getItem('tw_td_offset')||'0')||0;}catch(e){return 0;}}
 function _saveTDKey(k){try{localStorage.setItem('tw_td_key',k);}catch(e){}}
 function _saveTDSource(s){try{localStorage.setItem('tw_td_source',s);}catch(e){}}
@@ -5303,15 +5314,25 @@ async function loadAnalyzerChart(){
     // Twelve Data returns newest first — reverse to oldest→newest.
     // datetime strings come back in UTC (we pass timezone=UTC explicitly).
     // Appending 'T'+'Z' forces ISO 8601 UTC parse in all browsers regardless of device locale.
-    // NO weekend filter — Twelve Data only returns candles for active market hours.
-    // The old Sat/Sun filter was removing valid Sunday FX-open candles (gold opens ~21:00 UTC Sun).
+    //
+    // Smart weekend filter:
+    //   - Saturday (day 6): always removed — gold does not trade Saturday
+    //   - Sunday (day 0) before 21:00 UTC: removed — market closed
+    //   - Sunday (day 0) 21:00+ UTC: KEPT — this is the FX/gold weekly open
+    // Some data sources (FXCM, OANDA) occasionally return stale Saturday candles
+    // that carry Friday's close price. This filter removes them cleanly.
     const rawCandles=[...d.values].reverse().map(c=>({
       t:new Date(c.datetime.replace(' ','T')+'Z'),
       o:parseFloat(c.open),
       h:parseFloat(c.high),
       l:parseFloat(c.low),
       c:parseFloat(c.close),
-    }));
+    })).filter(c=>{
+      const day=c.t.getUTCDay();
+      if(day===6)return false;                          // Saturday — always out
+      if(day===0&&c.t.getUTCHours()<21)return false;   // Sunday before FX open — out
+      return true;
+    });
 
     // Apply price offset — aligns Twelve Data feed with MT5/TradingView broker price
     const offset=getTDOffset();
@@ -5485,9 +5506,13 @@ function renderAZChart(){
     SESSION_UTC.forEach(s=>emitBand(s,bandState[s.name]));
   }
   // Midnight UTC date-change lines (TradingView day boundary lines)
+  // Skip Saturday (day 6) and early Sunday (day 0, hour < 21) — no market activity
   display.forEach((c,i)=>{
     if(i===0)return;
     if(display[i-1].t.getUTCDate()!==c.t.getUTCDate()){
+      const day=c.t.getUTCDay();
+      if(day===6)return;                          // Saturday — suppress
+      if(day===0&&c.t.getUTCHours()<21)return;   // Early Sunday — suppress
       const x=(xS(i)-candleW/2).toFixed(1);
       const dayLbl=(c.t.getUTCMonth()+1)+'/'+(c.t.getUTCDate());
       midnightLines+=`<line x1="${x}" y1="${PAD.t}" x2="${x}" y2="${H-PAD.b}" stroke="#1E1E1E" stroke-width="0.8" stroke-dasharray="2,5" opacity="0.7"/>`;
@@ -5515,16 +5540,18 @@ function renderAZChart(){
   const labelStep=Math.max(1,Math.floor(n/5));
   display.forEach((c,i)=>{
     if(i%labelStep!==0&&i!==n-1)return;
+    const cDay=c.t.getUTCDay();
     let lbl;
     if(is4H){
-      // 4H chart spans multiple days — always show date label (matches TradingView behavior)
+      // 4H: only label weekdays — skip if this candle falls on Saturday or pre-open Sunday
+      if(cDay===6||(cDay===0&&c.t.getUTCHours()<21))return;
       lbl=`${c.t.getUTCDate()} ${MONTHS_X[c.t.getUTCMonth()]}`;
     } else {
       // Intraday — show WAT time; show date label at each UTC day boundary
       const prevC=i>0?display[i-1]:null;
       const isNewDay=prevC&&(c.t.getUTCDay()!==prevC.t.getUTCDay());
       if(isNewDay){
-        // Day boundary — label helps trader see where "midnight open" is
+        if(cDay===6||(cDay===0&&c.t.getUTCHours()<21))return; // suppress weekend date labels
         lbl=`${c.t.getUTCDate()} ${MONTHS_X[c.t.getUTCMonth()]}`;
       } else {
         // Standard WAT time label
