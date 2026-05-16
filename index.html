@@ -5623,7 +5623,8 @@ function _applyLWZoneLine(lz){
   _setZoneLineData(lz);
 }
 
-// Build line data from anchor time → extended beyond last candle
+// Build line data from anchor candle → far future so line always reaches right edge
+// 500 candle-widths into the future guarantees the ray extends past any scrollable area
 function _setZoneLineData(lz){
   if(!lz.lineSeries||!_azCandles.length)return;
   // Find the candle closest to the stored anchor time (UTC ms)
@@ -5634,10 +5635,9 @@ function _setZoneLineData(lz){
     if(diff<minDiff){minDiff=diff;anchorC=c;}
   }
   const anchorSec=Math.floor(anchorC.t.getTime()/1000);
-  const lastSec=Math.floor(_azCandles[_azCandles.length-1].t.getTime()/1000);
-  // Extend 5 candle-widths past the last candle so the line reaches the right edge
   const tfSec={'4h':14400,'1h':3600,'15min':900,'5min':300}[_azTF]||3600;
-  const extSec=lastSec+tfSec*5;
+  // Extend 500 candle-widths into the future — line always reaches beyond right edge
+  const extSec=Math.floor(_azCandles[_azCandles.length-1].t.getTime()/1000)+tfSec*500;
 
   lz.lineSeries.setData([
     {time:anchorSec,value:lz.price},
