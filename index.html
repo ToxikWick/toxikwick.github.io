@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ToxikWick Journal</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- TradingView Lightweight Charts — open-source chart engine (same as TradingView) -->
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 
 <style>
 
@@ -170,7 +172,7 @@ select option{background:#181818;color:#E2DDD6}
 .az-tf-btns{display:flex;gap:5px;margin-bottom:10px}
 .az-tf-btn{background:#111;border:1px solid #1C1C1C;border-radius:5px;padding:5px 12px;color:#444;font-size:10px;font-family:'DM Mono',monospace;cursor:pointer;transition:all .2s}
 .az-tf-btn.on{background:rgba(201,168,76,.08);border-color:rgba(201,168,76,.3);color:#C9A84C}
-.az-chart-wrap{background:#080808;border:1px solid #181818;border-radius:7px;overflow:hidden;margin-bottom:10px;position:relative;min-height:200px}
+.az-chart-wrap{background:#080808;border:1px solid #181818;border-radius:7px;margin-bottom:10px;position:relative;height:340px;overflow:hidden}
 .az-chart-loading{display:flex;align-items:center;justify-content:center;height:200px;color:#2A2A2A;font-size:11px;font-family:'DM Mono',monospace}
 .az-conf-row{display:flex;flex-direction:column;gap:3px;padding:9px 0;border-bottom:1px solid #141414}
 .az-conf-row:last-child{border-bottom:none}
@@ -1039,7 +1041,7 @@ select option{background:#181818;color:#E2DDD6}
       </div>
       <!-- Key levels legend (kept for future use, hidden when empty) -->
       <div id="az-levels-list" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px"></div>
-      <!-- LZ Mark Controls -->
+      <!-- Zone + HLine Controls -->
       <div style="display:flex;align-items:center;gap:6px;margin-top:10px;flex-wrap:wrap">
         <button id="az-mark-h-btn" onclick="toggleMarkMode('H')"
           style="font-size:10px;font-weight:700;padding:6px 14px;border-radius:5px;border:1px solid #1C1C1C;background:transparent;color:#555;cursor:pointer;font-family:'DM Mono',monospace;transition:all .2s">
@@ -1049,7 +1051,12 @@ select option{background:#181818;color:#E2DDD6}
           style="font-size:10px;font-weight:700;padding:6px 14px;border-radius:5px;border:1px solid #1C1C1C;background:transparent;color:#555;cursor:pointer;font-family:'DM Mono',monospace;transition:all .2s">
           📍 L-LZ
         </button>
-        <button onclick="clearManualLZs()"
+        <button id="az-hline-btn" onclick="toggleHLineMode()"
+          style="font-size:10px;font-weight:700;padding:6px 14px;border-radius:5px;border:1px solid #1C1C1C;background:transparent;color:#555;cursor:pointer;font-family:'DM Mono',monospace;transition:all .2s"
+          title="Mark a Round Number level after liquidity sweep — tells AI your directional bias">
+          ⚡ H-LINE
+        </button>
+        <button onclick="clearAllZones()"
           style="font-size:10px;padding:6px 12px;border-radius:5px;border:1px solid #1C1C1C;background:transparent;color:#444;cursor:pointer;font-family:'DM Mono',monospace">
           ✕ Clear All
         </button>
@@ -5028,30 +5035,25 @@ window.saveQuickTrade=async function(){
 let _azTF='1h';
 let _azCandles=[];
 let _azLoading=false;
-let _azViewState={offset:0,visible:60,yStretch:1.0,yPan:0};
-let _azRafPending=false;
+
+// ── Lightweight Charts engine state ──
+let _lwChart=null;       // LightweightCharts chart instance
+let _lwSeries=null;      // Candlestick series
+let _lwLastPriceLine=null; // current price dashed line
+let _lwInteractBound=false; // prevent double-binding interaction listeners
+let _lwDragZone=null;    // zone being dragged
+let _lwDragHLine=null;   // h-line being dragged
+let _lwDragStartY=null;
 
 // ── Manual LZ state ──
-let _manualLZs=[];        // [{id,price,type:'H'|'L',anchorIdx:Number}]
-let _azMarkMode=false;    // false | 'H' | 'L'
+let _manualLZs=[];       // [{id,price,type:'H'|'L',locked,priceLine}]
+let _azMarkMode=false;   // false | 'H' | 'L'
 let _azLZCounter=0;
 
-// ── Y-scale cache — lets interaction/tap code convert pixel→price ──
-let _azYScale={minP:0,maxP:0,H:310,PAD:{t:20,b:28,l:6,r:50},cW:284,cH:262,n:1,startIdx:0,rawRange:1};
-
-// ── Interaction state — MODULE LEVEL so all listeners share exactly one copy ──
-// Core fix: no per-closure state → no infinite LZ loop on re-render
-let _azDS={
-  active:false,
-  mode:null,          // 'pan'|'yscale'|'xscale'
-  startX:0,startY:0,
-  startOffset:0,startVisible:0,startYStretch:0,
-  startYPan:0,
-  tapMoved:false,
-  tapTime:0,
-  draggingLZ:null
-};
-let _azWinBound=false; // window-level listeners attached exactly once
+// ── Manual H-Lines (Round Number markers after liquidity sweep) ──
+let _azHLines=[];        // [{id,price,locked,priceLine}]
+let _azHLineMode=false;
+let _azHLineCounter=0;
 
 // WAT = UTC+1. Session windows in WAT hours (24h)
 const AZ_SESSIONS={
@@ -5264,7 +5266,10 @@ async function loadAnalyzerChart(){
     '<div style="font-size:11px;color:#333;font-family:DM Mono,monospace;text-align:center;padding:16px 0">Tap Run Analysis to check confluences on the loaded candles</div>';
 
   const wrap=document.getElementById('az-chart-wrap');
-  if(wrap)wrap.innerHTML='<div class="az-chart-loading">Fetching XAU/USD candles...</div>';
+
+  // Initialize LW chart once — never wipe innerHTML (that destroys the canvas)
+  if(!_lwChart&&wrap){initLWChart();}
+  showChartLoadingOverlay('Fetching XAU/USD candles...');
 
   try{
     const intervalMap={'4h':'4h','1h':'1h','15min':'15min','5min':'5min'};
@@ -5306,7 +5311,7 @@ async function loadAnalyzerChart(){
       } else {
         msg='Unable to load candle data — '+msg+'. Tap 📡 Data to check your settings.';
       }
-      if(wrap)wrap.innerHTML=`<div class="az-chart-loading" style="color:#E05252;line-height:1.8;padding:18px 12px;font-size:11px">${msg}</div>`;
+      showChartLoadingOverlay(msg,'#E05252');
       _azLoading=false;if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
       return;
     }
@@ -5341,14 +5346,14 @@ async function loadAnalyzerChart(){
       : rawCandles;
 
     if(!_azCandles.length){
-      if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">All candles filtered. Try a different timeframe or source.</div>';
+      showChartLoadingOverlay('All candles filtered — try a different timeframe or source.','#E05252');
       _azLoading=false;if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
       return;
     }
 
-    // Reset view — most recent 60 candles visible, rest scrollable left
-    _azViewState={offset:0,visible:60,yStretch:1.0,yPan:0};
-    renderAZChart();
+    // Render with Lightweight Charts engine
+    renderLWChart();
+    hideChartLoadingOverlay();
 
     if(cc)cc.style.display='block';
     if(ac)ac.style.display='block';
@@ -5377,525 +5382,357 @@ async function loadAnalyzerChart(){
     updatePresessionReadout();
 
   }catch(e){
-    if(wrap)wrap.innerHTML='<div class="az-chart-loading" style="color:#E05252">Network error — check your connection and try again.</div>';
+    showChartLoadingOverlay('Network error — check your connection and try again.','#E05252');
   }
 
   _azLoading=false;
   if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
 }
 
-// ── SVG Candlestick Chart Renderer ──
-function renderAZChart(){
+// ── Lightweight Charts Engine ─────────────────────────────────────────────────
+
+// Show/hide a transparent overlay on the chart wrap for loading/error states
+// This approach preserves the LW canvas DOM element — never wipe innerHTML.
+function showChartLoadingOverlay(msg,col){
   const wrap=document.getElementById('az-chart-wrap');
-  if(!wrap||!_azCandles.length)return;
-  const W=wrap.clientWidth||340;
-  const H=310;
-  const PAD={t:20,b:28,l:6,r:50};
-  const cW=W-PAD.l-PAD.r;
-  const cH=H-PAD.t-PAD.b;
-
-  // ── View state: which candles to show ──
-  const totalC=_azCandles.length;
-  const vis=Math.max(10,Math.min(_azViewState.visible,totalC));
-  const off=Math.max(0,Math.min(_azViewState.offset,totalC-vis));
-  const endIdx=totalC-off;
-  const startIdx=Math.max(0,endIdx-vis);
-  const display=_azCandles.slice(startIdx,endIdx);
-  const n=display.length;
-  if(!n)return;
-
-  // Breathing room: reserve 8% of chart width empty on the right when at offset=0
-  const rightBreath=off===0?Math.floor(n*0.08):0;
-  const candleW=Math.max(2,Math.min(20,Math.floor(cW/(n+rightBreath))-1));
-
-  // ── Price range with yStretch + yPan (vertical scroll) ──
-  const allH=display.map(c=>c.h),allL=display.map(c=>c.l);
-  const rawMin=Math.min(...allL),rawMax=Math.max(...allH);
-  const rawRange=rawMax-rawMin||1;
-  const center=(rawMax+rawMin)/2+(_azViewState.yPan||0)*rawRange;
-  const halfRange=(rawRange/2+rawRange*0.05)/_azViewState.yStretch;
-  let minP=center-halfRange,maxP=center+halfRange;
-  const totalRange=maxP-minP;
-
-  const yS=v=>PAD.t+cH-(((v-minP)/totalRange)*cH);
-  const xS=i=>PAD.l+(i/n)*cW+(candleW/2);
-
-  // Update y-scale cache — rawRange stored so doYPan can convert pixels→price fraction
-  _azYScale={minP,maxP,H,PAD,cW,cH,n,startIdx,rawRange};
-
-  // ── Y-axis grid + labels ──
-  let yLabels='',yGrids='';
-  const priceStep=niceNum(totalRange/4);
-  const priceStart=Math.ceil(minP/priceStep)*priceStep;
-  for(let p=priceStart;p<=maxP;p+=priceStep){
-    const y=yS(p);
-    if(y<PAD.t||y>H-PAD.b)continue;
-    yLabels+=`<text x="${W-PAD.r+4}" y="${(y+3).toFixed(1)}" font-size="8" fill="#2A2A2A" font-family="DM Mono,monospace" text-anchor="start">${p.toFixed(0)}</text>`;
-    yGrids+=`<line x1="${PAD.l}" y1="${y.toFixed(1)}" x2="${W-PAD.r}" y2="${y.toFixed(1)}" stroke="#141414" stroke-width="0.7"/>`;
+  if(!wrap)return;
+  let ov=document.getElementById('az-lw-overlay');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='az-lw-overlay';
+    ov.style.cssText='position:absolute;inset:0;background:rgba(8,8,8,.88);display:flex;align-items:center;justify-content:center;z-index:20;font-size:11px;font-family:"DM Mono",monospace;border-radius:7px;text-align:center;padding:16px;line-height:1.7';
+    wrap.appendChild(ov);
   }
+  ov.style.color=col||'#2A2A2A';
+  ov.textContent=msg;
+  ov.style.display='flex';
+}
+function hideChartLoadingOverlay(){
+  const ov=document.getElementById('az-lw-overlay');
+  if(ov)ov.style.display='none';
+}
 
-  // ── Key levels ──
-  const levels=detectKeyLevels(display,minP,maxP);
-  let levelLines='';
-  levels.forEach(lv=>{
-    const y=yS(lv.price);
-    if(y<PAD.t||y>H-PAD.b)return;
-    const isLZ=lv.type==='lz_high'||lv.type==='lz_low';
-    const isRoundK=lv.type==='round_k';
-    // For LZ lines: start from the candle that formed the level (anchored)
-    // startFrac is the candle's position in the FULL _azCandles array
-    // We need to map it to the DISPLAY window
-    let x1=PAD.l;
-    if(isLZ&&lv.startFrac!==undefined){
-      // Map full-array fraction to display window
-      const totalC=_azCandles.length;
-      const absIdx=Math.round(lv.startFrac*totalC);
-      // display = _azCandles.slice(startIdx, endIdx)
-      const dispStart=totalC-off-vis;
-      const relIdx=absIdx-dispStart;
-      if(relIdx>=0&&relIdx<n){
-        x1=PAD.l+(relIdx/n)*cW+(candleW/2);
-      }else if(relIdx<0){
-        x1=PAD.l; // level formed before visible window — draw from left edge
-      }else{
-        return; // level formed after visible window — don't draw
-      }
-    }
-    const x2=W-PAD.r;
-    const dashAttr=lv.dash==='none'?'':` stroke-dasharray="${lv.dash}"`;
-    levelLines+=`<line x1="${x1.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${lv.col}" stroke-width="${lv.w}"${dashAttr}/>`;
-    // Price label — right edge only, no floating mid-chart labels
-    levelLines+=`<text x="${(W-PAD.r+3).toFixed(1)}" y="${(y+3).toFixed(1)}" font-size="${isRoundK?'7.5':'7'}" fill="${lv.col}" font-family="DM Mono,monospace" text-anchor="start" font-weight="${isLZ?'600':'400'}">${lv.label}</text>`;
+// ── Init: create the LW chart instance once ──
+function initLWChart(){
+  const wrap=document.getElementById('az-chart-wrap');
+  if(!wrap||!window.LightweightCharts)return;
+  if(_lwChart){_lwChart.remove();_lwChart=null;_lwSeries=null;_lwLastPriceLine=null;}
+
+  const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  _lwChart=LightweightCharts.createChart(wrap,{
+    width:wrap.clientWidth,
+    height:340,
+    layout:{
+      background:{color:'#080808'},
+      textColor:'#3A3A3A',
+      fontFamily:"'DM Mono',monospace",
+      fontSize:10,
+    },
+    grid:{
+      vertLines:{color:'#111111',style:LightweightCharts.LineStyle.Dotted},
+      horzLines:{color:'#141414',style:LightweightCharts.LineStyle.Dotted},
+    },
+    crosshair:{
+      mode:LightweightCharts.CrosshairMode.Normal,
+      vertLine:{color:'#242424',width:1,style:LightweightCharts.LineStyle.Dashed,labelBackgroundColor:'#161616'},
+      horzLine:{color:'#242424',width:1,style:LightweightCharts.LineStyle.Dashed,labelBackgroundColor:'#161616'},
+    },
+    rightPriceScale:{
+      borderColor:'#181818',
+      textColor:'#3A3A3A',
+      scaleMargins:{top:0.08,bottom:0.08},
+    },
+    timeScale:{
+      borderColor:'#181818',
+      textColor:'#3A3A3A',
+      timeVisible:true,
+      secondsVisible:false,
+      rightOffset:5,
+      // All time labels shown in WAT (UTC+1). Day boundaries auto-show date.
+      tickMarkFormatter:(time,tickMarkType)=>{
+        const d=new Date(time*1000);
+        // tickMarkType: 0=Year,1=Month,2=DayOfMonth,3=Time,4=TimeWithSeconds
+        if(tickMarkType<=2){
+          // Day/month boundary — show date (subtle, matches TradingView day separator)
+          return d.getUTCDate()+' '+MONTHS[d.getUTCMonth()];
+        }
+        // Intraday — WAT = UTC+1
+        const wh=String((d.getUTCHours()+1)%24).padStart(2,'0');
+        const wm=String(d.getUTCMinutes()).padStart(2,'0');
+        return wh+':'+wm;
+      },
+    },
+    handleScroll:{mouseWheel:true,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},
+    handleScale:{axisPressedMouseMove:true,mouseWheel:true,pinch:true},
   });
 
-  // ── Session shading bands + Midnight UTC separators ──
-  // Session times in UTC hours (Isaiah trades in WAT = UTC+1):
-  //   Asia  : 21:00–01:00 UTC  (= 22:00–02:00 WAT)
-  //   NY    : 10:00–16:00 UTC  (= 11:00–17:00 WAT)
-  // Shading covers consecutive candles that fall inside each session window.
-  // Midnight separators mark daily open boundaries matching TradingView's day lines.
-  const is4H=_azTF==='4h';
-  let sessionBands='',midnightLines='';
-  if(!is4H){
-    const SESSION_UTC=[
-      {name:'Asia',startH:21,endH:25,col:'rgba(120,150,255,0.055)'},  // endH>24 = wraps midnight
-      {name:'NY',  startH:10,endH:16,col:'rgba(201,168,76,0.042)'},   // 11:00–17:00 WAT
-    ];
-    // Track open band x-range per session
-    const bandState={};
-    SESSION_UTC.forEach(s=>{bandState[s.name]={x1:null,x2:null};});
-    const emitBand=(s,bs)=>{
-      if(bs.x1===null)return;
-      const bw=Math.max(0,bs.x2-bs.x1);
-      if(bw>0)sessionBands+=`<rect x="${bs.x1.toFixed(1)}" y="${PAD.t}" width="${bw.toFixed(1)}" height="${cH}" fill="${s.col}"/>`;
-      bs.x1=null;bs.x2=null;
-    };
-    display.forEach((c,i)=>{
-      const utcH=c.t.getUTCHours();
-      const cLeft=xS(i)-candleW/2;
-      const cRight=xS(i)+candleW/2;
-      SESSION_UTC.forEach(s=>{
-        const inSess=s.endH<=24
-          ?(utcH>=s.startH&&utcH<s.endH)
-          :(utcH>=s.startH||utcH<(s.endH-24)); // spans midnight
-        const bs=bandState[s.name];
-        if(inSess){if(bs.x1===null)bs.x1=cLeft;bs.x2=cRight;}
-        else{emitBand(s,bs);}
-      });
+  _lwSeries=_lwChart.addCandlestickSeries({
+    upColor:'#2DB87C',
+    downColor:'#E05252',
+    borderUpColor:'#2DB87C',
+    borderDownColor:'#E05252',
+    wickUpColor:'#2DB87C',
+    wickDownColor:'#E05252',
+    priceLineVisible:false, // we manage last-price line manually
+  });
+
+  // Keep chart width in sync with container on resize
+  if(window.ResizeObserver){
+    const ro=new ResizeObserver(()=>{
+      if(_lwChart&&wrap)_lwChart.applyOptions({width:wrap.clientWidth});
     });
-    SESSION_UTC.forEach(s=>emitBand(s,bandState[s.name]));
+    ro.observe(wrap);
   }
-  // Midnight UTC date-change lines (TradingView day boundary lines)
-  // Skip Saturday (day 6) and early Sunday (day 0, hour < 21) — no market activity
-  display.forEach((c,i)=>{
-    if(i===0)return;
-    if(display[i-1].t.getUTCDate()!==c.t.getUTCDate()){
-      const day=c.t.getUTCDay();
-      if(day===6)return;                          // Saturday — suppress
-      if(day===0&&c.t.getUTCHours()<21)return;   // Early Sunday — suppress
-      const x=(xS(i)-candleW/2).toFixed(1);
-      const dayLbl=(c.t.getUTCMonth()+1)+'/'+(c.t.getUTCDate());
-      midnightLines+=`<line x1="${x}" y1="${PAD.t}" x2="${x}" y2="${H-PAD.b}" stroke="#1E1E1E" stroke-width="0.8" stroke-dasharray="2,5" opacity="0.7"/>`;
-      midnightLines+=`<text x="${(parseFloat(x)+2.5).toFixed(1)}" y="${(PAD.t+8).toFixed(1)}" font-size="6.5" fill="#252525" font-family="DM Mono,monospace">${dayLbl}</text>`;
-    }
+
+  // Update price display on crosshair hover
+  _lwChart.subscribeCrosshairMove(param=>{
+    if(!param.seriesData||!param.seriesData.size)return;
+    const bar=param.seriesData.get(_lwSeries);
+    if(!bar)return;
+    const pd=document.getElementById('az-price-display');
+    if(!pd)return;
+    const col=bar.close>=bar.open?'#2DB87C':'#E05252';
+    pd.innerHTML=`<span style="color:${col}">${bar.close.toFixed(2)}</span>`;
   });
 
-  // ── Candles ──
-  let candles='';
-  display.forEach((c,i)=>{
-    const x=xS(i);
-    const isBull=c.c>=c.o;
-    const col=isBull?'#2DB87C':'#E05252';
-    const bodyTop=yS(Math.max(c.o,c.c));
-    const bodyBot=yS(Math.min(c.o,c.c));
-    const bodyH=Math.max(1,bodyBot-bodyTop);
-    candles+=`<line x1="${x.toFixed(1)}" y1="${yS(c.h).toFixed(1)}" x2="${x.toFixed(1)}" y2="${yS(c.l).toFixed(1)}" stroke="${col}" stroke-width="1"/>`;
-    candles+=`<rect x="${(x-candleW/2).toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${candleW}" height="${bodyH.toFixed(1)}" fill="${col}" rx="0.5"/>`;
+  // Zone and H-Line placement via click/tap (LW handles both mouse and touch)
+  _lwChart.subscribeClick(param=>{
+    if(!param.point||!_lwSeries)return;
+    const price=_lwSeries.coordinateToPrice(param.point.y);
+    if(price===null)return;
+    const snapped=Math.round(price*100)/100;
+    if(_azMarkMode){placeLWZone(snapped);return;}
+    if(_azHLineMode){placeLWHLine(snapped);return;}
   });
 
-  // ── X-axis time labels (WAT = UTC+1) ──
-  // Candle timestamps are UTC (fixed by 'Z' parsing). is4H reuses the const defined above.
-  const MONTHS_X=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  let xLabels='';
-  const labelStep=Math.max(1,Math.floor(n/5));
-  display.forEach((c,i)=>{
-    if(i%labelStep!==0&&i!==n-1)return;
-    const cDay=c.t.getUTCDay();
-    let lbl;
-    if(is4H){
-      // 4H: only label weekdays — skip if this candle falls on Saturday or pre-open Sunday
-      if(cDay===6||(cDay===0&&c.t.getUTCHours()<21))return;
-      lbl=`${c.t.getUTCDate()} ${MONTHS_X[c.t.getUTCMonth()]}`;
-    } else {
-      // Intraday — show WAT time; show date label at each UTC day boundary
-      const prevC=i>0?display[i-1]:null;
-      const isNewDay=prevC&&(c.t.getUTCDay()!==prevC.t.getUTCDay());
-      if(isNewDay){
-        if(cDay===6||(cDay===0&&c.t.getUTCHours()<21))return; // suppress weekend date labels
-        lbl=`${c.t.getUTCDate()} ${MONTHS_X[c.t.getUTCMonth()]}`;
-      } else {
-        // Standard WAT time label
-        const watH=String((c.t.getUTCHours()+1)%24).padStart(2,'0');
-        const watM=String(c.t.getUTCMinutes()).padStart(2,'0');
-        lbl=`${watH}:${watM}`;
-      }
-    }
-    xLabels+=`<text x="${xS(i).toFixed(1)}" y="${H-6}" font-size="7.5" fill="#252525" font-family="DM Mono,monospace" text-anchor="middle">${lbl}</text>`;
+  setupLWInteraction();
+}
+
+// ── Set candle data and re-apply all price lines ──
+function renderLWChart(){
+  if(!_lwChart||!_lwSeries||!_azCandles.length)return;
+
+  // Build LW data array: time = UTC epoch seconds (integer)
+  const lwData=_azCandles.map(c=>({
+    time:Math.floor(c.t.getTime()/1000),
+    open:c.o,high:c.h,low:c.l,close:c.c,
+  }));
+
+  // Remove all existing price lines before re-setting data on TF switch
+  _clearAllPriceLines();
+
+  _lwSeries.setData(lwData);
+
+  // Current price line — dashed, shows last close
+  const last=_azCandles[_azCandles.length-1];
+  const lastCol=last.c>=last.o?'#2DB87C':'#E05252';
+  _lwLastPriceLine=_lwSeries.createPriceLine({
+    price:last.c,
+    color:lastCol,
+    lineWidth:1,
+    lineStyle:LightweightCharts.LineStyle.Dashed,
+    axisLabelVisible:false,
+    title:'',
   });
 
-  // ── Last price dashed line ──
-  const lastP=display[n-1].c;
-  const lastY=yS(lastP);
-  const lastCol=display[n-1].c>=display[n-1].o?'#2DB87C':'#E05252';
-  const lastLine=`<line x1="${PAD.l}" y1="${lastY.toFixed(1)}" x2="${W-PAD.r}" y2="${lastY.toFixed(1)}" stroke="${lastCol}" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.6"/>`;
+  // Re-apply manual LZ zones as price lines (persists across TF switches)
+  _manualLZs.forEach(lz=>_applyLWZoneLine(lz));
+  // Re-apply manual H-Lines (RN markers)
+  _azHLines.forEach(hl=>_applyLWHLine(hl));
 
-  // ── Manual Liquidity Zones — anchored lines ──
-  let manualLZsvg='';
-  _manualLZs.forEach(lz=>{
-    const y=yS(lz.price);
-    if(y<PAD.t-2||y>H-PAD.b+2)return;
-    const col=lz.type==='H'?'#E05252':'#F0A0A0';
-    const bgCol=lz.type==='H'?'rgba(224,82,82,0.15)':'rgba(224,82,82,0.08)';
-    const bdrCol=lz.type==='H'?'rgba(224,82,82,0.6)':'rgba(224,82,82,0.35)';
-    let x1=PAD.l;
-    const relIdx=lz.anchorIdx-startIdx;
-    if(relIdx>0&&relIdx<n) x1=PAD.l+(relIdx/n)*cW;
-    else if(relIdx>=n) return;
-    const x2=W-PAD.r;
-    // Locked = solid 1px, unlocked = dashed 0.8px (shows it's draggable)
-    const dashAttr=lz.locked?'':' stroke-dasharray="4,3"';
-    const sw=lz.locked?'1':'0.8';
-    const op=lz.locked?'1':'0.82';
-    manualLZsvg+=`<line x1="${x1.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${col}" stroke-width="${sw}"${dashAttr} opacity="${op}"/>`;
-    manualLZsvg+=`<rect x="${(x2+1).toFixed(1)}" y="${(y-7).toFixed(1)}" width="47" height="14" rx="2.5" fill="${bgCol}" stroke="${bdrCol}" stroke-width="0.8"/>`;
-    manualLZsvg+=`<text x="${(x2+4.5).toFixed(1)}" y="${(y+4).toFixed(1)}" font-size="7.5" fill="${col}" font-family="DM Mono,monospace" font-weight="700">${lz.price.toFixed(2)}</text>`;
-    manualLZsvg+=`<rect x="${(x1).toFixed(1)}" y="${(y-7).toFixed(1)}" width="15" height="14" rx="2" fill="${bgCol}" stroke="${bdrCol}" stroke-width="0.8"/>`;
-    manualLZsvg+=`<text x="${(x1+2.5).toFixed(1)}" y="${(y+4).toFixed(1)}" font-size="7.5" fill="${col}" font-family="DM Mono,monospace" font-weight="700">${lz.type}</text>`;
+  // Scroll to show most recent candles on the right
+  _lwChart.timeScale().scrollToRealTime();
+
+  // Update price header display
+  const pd=document.getElementById('az-price-display');
+  if(pd){
+    const chg=last.c-(_azCandles[_azCandles.length-2]||last).c;
+    const col=chg>=0?'#2DB87C':'#E05252';
+    pd.innerHTML=`<span style="color:${lastCol}">${last.c.toFixed(2)}</span><span style="font-size:9px;color:${col};margin-left:4px">${chg>=0?'+':''}${chg.toFixed(2)}</span>`;
+  }
+}
+
+// ── Price line helpers ──
+function _clearAllPriceLines(){
+  if(!_lwSeries)return;
+  if(_lwLastPriceLine){try{_lwSeries.removePriceLine(_lwLastPriceLine);}catch(e){}_lwLastPriceLine=null;}
+  _manualLZs.forEach(lz=>{if(lz.priceLine){try{_lwSeries.removePriceLine(lz.priceLine);}catch(e){}lz.priceLine=null;}});
+  _azHLines.forEach(hl=>{if(hl.priceLine){try{_lwSeries.removePriceLine(hl.priceLine);}catch(e){}hl.priceLine=null;}});
+}
+
+function _applyLWZoneLine(lz){
+  if(!_lwSeries)return;
+  const col=lz.type==='H'?'#E05252':'#4DAAFF';
+  lz.priceLine=_lwSeries.createPriceLine({
+    price:lz.price,
+    color:col,
+    lineWidth:lz.locked?1.5:1,
+    lineStyle:lz.locked?LightweightCharts.LineStyle.Solid:LightweightCharts.LineStyle.Dashed,
+    axisLabelVisible:true,
+    title:lz.type+'-LZ',
   });
-
-  // ── Scroll indicator ──
-  const scrollBarW=cW*(vis/totalC);
-  const scrollBarX=PAD.l+cW*((totalC-vis-off)/totalC);
-  const scrollBar=off>0?`<rect x="${scrollBarX.toFixed(1)}" y="${H-5}" width="${scrollBarW.toFixed(1)}" height="3" rx="1.5" fill="#2A2A2A"/>`:'' ;
-
-  // ── Render SVG ──
-  // Layer order (back→front): session bands → midnight lines → y-grid → key levels → candles → last price → manual LZs → labels → scroll indicator
-  wrap.innerHTML=
-    `<svg id="az-svg" viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block;touch-action:none">`+
-    sessionBands+midnightLines+yGrids+levelLines+candles+lastLine+manualLZsvg+yLabels+xLabels+scrollBar+
-    `</svg>`+
-    `<div id="az-pan-overlay" style="position:absolute;top:0;left:0;right:${PAD.r}px;bottom:${PAD.b}px;cursor:${_azMarkMode?'crosshair':'grab'}"></div>`+
-    `<div id="az-yscale-overlay" style="position:absolute;top:0;right:0;width:${PAD.r}px;bottom:${PAD.b}px;cursor:ns-resize"></div>`+
-    `<div id="az-xscale-overlay" style="position:absolute;bottom:0;left:0;right:${PAD.r}px;height:${PAD.b}px;cursor:ew-resize"></div>`;
-
-  // Attach element-level touch listeners (safe to re-attach — element is replaced each render)
-  attachAZInteraction();
-  // Attach window-level listeners ONCE only (prevents the infinite-LZ loop bug)
-  initAZWindowListeners();
-  renderLevelLegend(levels);
 }
 
-// ── RAF scheduler ──
-function _azScheduleRender(){
-  if(!_azRafPending){
-    _azRafPending=true;
-    requestAnimationFrame(()=>{renderAZChart();_azRafPending=false;});
-  }
+function _applyLWHLine(hl){
+  if(!_lwSeries)return;
+  hl.priceLine=_lwSeries.createPriceLine({
+    price:hl.price,
+    color:'#C9A84C',
+    lineWidth:hl.locked?1.5:1,
+    lineStyle:hl.locked?LightweightCharts.LineStyle.Solid:LightweightCharts.LineStyle.Dotted,
+    axisLabelVisible:true,
+    title:'RN',
+  });
 }
 
-// ── Pan / Scale helpers — MODULE LEVEL so both touch and mouse handlers can call them ──
-function doPan(x){
-  const dx=x-_azDS.startX;
-  const wrap=document.getElementById('az-chart-wrap');
-  const W=wrap?wrap.clientWidth:340;
-  const pxPerCandle=(W-56)/Math.max(1,_azViewState.visible);
-  // Drag RIGHT = go back in time (older candles, higher offset) — TradingView standard
-  const delta=Math.round(dx/pxPerCandle);
-  const maxOff=Math.max(0,_azCandles.length-_azViewState.visible);
-  const newOff=Math.max(0,Math.min(_azDS.startOffset+delta,maxOff));
-  if(newOff!==_azViewState.offset){_azViewState.offset=newOff;_azScheduleRender();}
-}
-function doYScale(y){
-  const dy=_azDS.startY-y;
-  const factor=1+dy*0.005;
-  const newS=Math.max(0.3,Math.min(_azDS.startYStretch*factor,8));
-  if(Math.abs(newS-_azViewState.yStretch)>0.01){_azViewState.yStretch=newS;_azScheduleRender();}
-}
-function doXScale(x){
-  const dx=_azDS.startX-x;
-  const delta=Math.round(dx*0.15);
-  const newVis=Math.max(10,Math.min(_azDS.startVisible+delta,_azCandles.length));
-  if(newVis!==_azViewState.visible){_azViewState.visible=newVis;_azScheduleRender();}
-}
-// ── Y-Pan — drag chart body up/down to scroll price view ──
-function doYPan(y){
-  const dy=_azDS.startY-y; // positive = finger moved up = price window shifts up
-  const rng=_azYScale.rawRange||1;
-  const cH=_azYScale.cH||262;
-  const stretchedRange=(rng/2+rng*0.05)/(_azViewState.yStretch||1)*2;
-  const fracPerPx=stretchedRange/(cH*rng);
-  const newPan=_azDS.startYPan+dy*fracPerPx;
-  if(Math.abs(newPan-(_azViewState.yPan||0))>0.0001){
-    _azViewState.yPan=newPan;
-    _azScheduleRender();
-  }
-}
-
-// ── Element-level interaction — re-attached each render (safe, element is rebuilt) ──
-function attachAZInteraction(){
-  const panEl=document.getElementById('az-pan-overlay');
-  const yEl=document.getElementById('az-yscale-overlay');
-  const xEl=document.getElementById('az-xscale-overlay');
-  if(!panEl||!yEl||!xEl)return;
-
-  function getXY(e){
-    return e.touches?{x:e.touches[0].clientX,y:e.touches[0].clientY}:{x:e.clientX,y:e.clientY};
-  }
-
-  // ── PAN — touchstart ──
-  function panTouchStart(e){
-    e.preventDefault();
-    const {x,y}=getXY(e);
-    const clientY=e.touches?e.touches[0].clientY:e.clientY;
-    const lz=findLZNear(clientY);
-    _azDS.active=true;
-    _azDS.mode='pan';
-    _azDS.startX=x;
-    _azDS.startY=y;   // ← was missing — caused tapMoved=true on every touch
-    startPanOffset();
-    _azDS.tapMoved=false;
-    _azDS.tapTime=Date.now();
-    _azDS.draggingLZ=lz||null;
-    panEl.style.cursor=lz?'ns-resize':'grabbing';
-  }
-  function panTouchMove(e){
-    e.preventDefault();
-    const {x,y}=getXY(e);
-    const adx=Math.abs(x-_azDS.startX),ady=Math.abs(y-_azDS.startY);
-    if(adx>12||ady>12)_azDS.tapMoved=true;
-    if(_azDS.draggingLZ){
-      const clientY=e.touches?e.touches[0].clientY:e.clientY;
-      dragLZTo(clientY);return;
-    }
-    if(!_azDS.tapMoved)return;
-    // Route by dominant axis: horizontal = X pan (scroll time), vertical = Y pan (scroll price)
-    if(adx>=ady){doPan(x);}else{doYPan(y);}
-  }
-  function panTouchEnd(e){
-    panEl.style.cursor=_azMarkMode?'crosshair':'grab';
-    if(_azDS.draggingLZ){_azDS.draggingLZ=null;renderLZPanel();_azDS.active=false;return;}
-    // Clean tap: minimal movement + under 500ms
-    if(!_azDS.tapMoved&&(Date.now()-_azDS.tapTime)<500&&_azMarkMode){
-      const clientY=e.changedTouches?e.changedTouches[0].clientY:e.clientY;
-      const clientX=e.changedTouches?e.changedTouches[0].clientX:e.clientX;
-      placeLZAtTap(clientX,clientY);
-    }
-    _azDS.active=false;
-  }
-  panEl.addEventListener('mousedown',panTouchStart,{passive:false});
-  panEl.addEventListener('touchstart',panTouchStart,{passive:false});
-  panEl.addEventListener('touchmove',panTouchMove,{passive:false});
-  panEl.addEventListener('touchend',panTouchEnd,{passive:false});
-
-  // ── Y-SCALE — touch only (mouse handled by window listener) ──
-  function yTouchStart(e){
-    e.preventDefault();
-    const {y}=getXY(e);
-    _azDS.active=true;_azDS.mode='yscale';
-    _azDS.startY=y;_azDS.startYStretch=_azViewState.yStretch;
-  }
-  function yTouchMove(e){
-    e.preventDefault();
-    const {y}=getXY(e);
-    doYScale(y);
-  }
-  yEl.addEventListener('mousedown',function(e){
-    e.preventDefault();
-    const {y}=getXY(e);
-    _azDS.active=true;_azDS.mode='yscale';
-    _azDS.startY=y;_azDS.startYStretch=_azViewState.yStretch;
-  },{passive:false});
-  yEl.addEventListener('touchstart',yTouchStart,{passive:false});
-  yEl.addEventListener('touchmove',yTouchMove,{passive:false});
-
-  // ── X-SCALE ──
-  function xTouchStart(e){
-    e.preventDefault();
-    const {x}=getXY(e);
-    _azDS.active=true;_azDS.mode='xscale';
-    _azDS.startX=x;_azDS.startVisible=_azViewState.visible;
-  }
-  function xTouchMove(e){
-    e.preventDefault();
-    const {x}=getXY(e);
-    doXScale(x);
-  }
-  xEl.addEventListener('mousedown',function(e){
-    e.preventDefault();
-    const {x}=getXY(e);
-    _azDS.active=true;_azDS.mode='xscale';
-    _azDS.startX=x;_azDS.startVisible=_azViewState.visible;
-  },{passive:false});
-  xEl.addEventListener('touchstart',xTouchStart,{passive:false});
-  xEl.addEventListener('touchmove',xTouchMove,{passive:false});
-}
-
-// ── Window-level mouse listeners — attached ONCE only via _azWinBound flag ──
-function initAZWindowListeners(){
-  if(_azWinBound)return;
-  _azWinBound=true;
-
-  window.addEventListener('mousemove',function(e){
-    if(!_azDS.active||e.buttons!==1)return;
-    const adx=Math.abs(e.clientX-_azDS.startX),ady=Math.abs(e.clientY-_azDS.startY);
-    if(adx>12||ady>12)_azDS.tapMoved=true;
-    if(_azDS.mode==='pan'){
-      if(_azDS.draggingLZ){dragLZTo(e.clientY);return;}
-      if(adx>=ady){doPan(e.clientX);}else{doYPan(e.clientY);}
-    }else if(_azDS.mode==='yscale'){
-      doYScale(e.clientY);
-    }else if(_azDS.mode==='xscale'){
-      doXScale(e.clientX);
-    }
-  },{passive:false});
-
-  window.addEventListener('mouseup',function(e){
-    if(!_azDS.active)return;
-    if(_azDS.mode==='pan'){
-      if(_azDS.draggingLZ){_azDS.draggingLZ=null;renderLZPanel();}
-      else if(!_azDS.tapMoved&&(Date.now()-_azDS.tapTime)<400&&_azMarkMode){
-        placeLZAtTap(e.clientX,e.clientY);
-      }
-    }
-    _azDS.active=false;
-    const panEl=document.getElementById('az-pan-overlay');
-    if(panEl)panEl.style.cursor=_azMarkMode?'crosshair':'grab';
-  },{passive:false});
-}
-
-function startPanOffset(){
-  _azDS.startOffset=_azViewState.offset;
-  _azDS.startYStretch=_azViewState.yStretch;
-  _azDS.startVisible=_azViewState.visible;
-  _azDS.startYPan=_azViewState.yPan||0;
-}
-
-// ── Convert client pixel position → chart price ──
-function pixelToPrice(clientY){
-  const wrap=document.getElementById('az-chart-wrap');
-  if(!wrap)return null;
-  const rect=wrap.getBoundingClientRect();
-  const {minP,maxP,H,PAD,cH}=_azYScale;
-  const relY=clientY-rect.top;
-  const totalRange=maxP-minP||1;
-  return minP+(1-(relY-PAD.t)/cH)*totalRange;
-}
-
-// ── Convert client X pixel → absolute candle index in _azCandles ──
-function pixelToCandle(clientX){
-  const wrap=document.getElementById('az-chart-wrap');
-  if(!wrap)return 0;
-  const rect=wrap.getBoundingClientRect();
-  const {PAD,cW,n,startIdx}=_azYScale;
-  const relX=Math.max(0,clientX-rect.left-PAD.l);
-  const fraction=relX/cW;
-  return Math.round(startIdx+fraction*n);
-}
-
-// ── Find LZ near a clientY tap (within 18px) — locked zones are skipped ──
-function findLZNear(clientY){
-  const wrap=document.getElementById('az-chart-wrap');
-  if(!wrap||!_manualLZs.length)return null;
-  const rect=wrap.getBoundingClientRect();
-  const relY=clientY-rect.top;
-  const {minP,maxP,H,PAD,cH}=_azYScale;
-  const totalRange=maxP-minP||1;
+// ── Find zone/h-line near a Y pixel coordinate (relative to chart wrap top) ──
+function _findLWZoneNear(relY){
+  if(!_lwSeries)return null;
   for(const lz of _manualLZs){
-    if(lz.locked)continue; // locked zones cannot be dragged
-    const lzY=PAD.t+cH*(1-(lz.price-minP)/totalRange);
-    if(Math.abs(relY-lzY)<=18)return lz;
+    if(lz.locked)continue;
+    const coord=_lwSeries.priceToCoordinate(lz.price);
+    if(coord===null)continue;
+    if(Math.abs(relY-coord)<=18)return lz;
+  }
+  return null;
+}
+function _findLWHLineNear(relY){
+  if(!_lwSeries)return null;
+  for(const hl of _azHLines){
+    if(hl.locked)continue;
+    const coord=_lwSeries.priceToCoordinate(hl.price);
+    if(coord===null)continue;
+    if(Math.abs(relY-coord)<=18)return hl;
   }
   return null;
 }
 
-// ── Drag existing LZ line vertically ──
-function dragLZTo(clientY){
-  if(!_azDS.draggingLZ)return;
-  const price=pixelToPrice(clientY);
-  if(price===null)return;
-  _azDS.draggingLZ.price=Math.round(price*100)/100;
-  if(!_azRafPending){
-    _azRafPending=true;
-    requestAnimationFrame(()=>{renderAZChart();_azRafPending=false;});
+// ── Zone/H-Line drag interaction ──
+function setupLWInteraction(){
+  if(_lwInteractBound)return;
+  _lwInteractBound=true;
+  const wrap=document.getElementById('az-chart-wrap');
+  if(!wrap)return;
+
+  function getDragTarget(clientY){
+    if(!wrap||!_lwSeries)return null;
+    const relY=clientY-wrap.getBoundingClientRect().top;
+    return _findLWZoneNear(relY)||_findLWHLineNear(relY)||null;
   }
+
+  function startDrag(clientY){
+    const target=getDragTarget(clientY);
+    if(!target)return;
+    // Identify if zone or h-line
+    if(_manualLZs.includes(target))_lwDragZone=target;
+    else _lwDragHLine=target;
+    _lwDragStartY=clientY;
+    // Disable LW chart scroll while dragging a line
+    _lwChart.applyOptions({handleScroll:false,handleScale:false});
+  }
+
+  function moveDrag(clientY){
+    if(!_lwDragZone&&!_lwDragHLine)return;
+    if(!_lwSeries||!wrap)return;
+    const relY=clientY-wrap.getBoundingClientRect().top;
+    const price=_lwSeries.coordinateToPrice(relY);
+    if(price===null)return;
+    const snapped=Math.round(price*100)/100;
+    if(_lwDragZone){
+      _lwDragZone.price=snapped;
+      _lwDragZone.priceLine.applyOptions({price:snapped});
+    }else if(_lwDragHLine){
+      _lwDragHLine.price=snapped;
+      _lwDragHLine.priceLine.applyOptions({price:snapped});
+    }
+  }
+
+  function endDrag(){
+    const hadDrag=_lwDragZone||_lwDragHLine;
+    if(_lwDragZone){renderLZPanel();_lwDragZone=null;}
+    if(_lwDragHLine){renderLZPanel();_lwDragHLine=null;}
+    if(hadDrag&&_lwChart){
+      // Re-enable scroll after drag completes
+      _lwChart.applyOptions({
+        handleScroll:{mouseWheel:true,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},
+        handleScale:{axisPressedMouseMove:true,mouseWheel:true,pinch:true},
+      });
+    }
+  }
+
+  // Mouse drag
+  wrap.addEventListener('mousedown',e=>startDrag(e.clientY),{passive:true});
+  window.addEventListener('mousemove',e=>{if(e.buttons===1)moveDrag(e.clientY);},{passive:true});
+  window.addEventListener('mouseup',endDrag,{passive:true});
+
+  // Touch drag (placement is handled by subscribeClick above)
+  wrap.addEventListener('touchstart',e=>{
+    if(e.touches.length===1)startDrag(e.touches[0].clientY);
+  },{passive:true});
+  wrap.addEventListener('touchmove',e=>{
+    if(e.touches.length===1&&(_lwDragZone||_lwDragHLine)){
+      e.preventDefault();
+      moveDrag(e.touches[0].clientY);
+    }
+  },{passive:false});
+  wrap.addEventListener('touchend',endDrag,{passive:true});
 }
 
-// ── Place new LZ at tap position ──
-function placeLZAtTap(clientX,clientY){
-  const price=pixelToPrice(clientY);
-  if(price===null||!_azMarkMode)return;
-  const anchorIdx=Math.max(0,Math.min(pixelToCandle(clientX),_azCandles.length-1));
+// ── Place new zone / h-line at price ──
+function placeLWZone(price){
+  if(!_lwSeries||!_azMarkMode)return;
   _azLZCounter++;
-  _manualLZs.push({id:_azLZCounter,price:Math.round(price*100)/100,type:_azMarkMode,anchorIdx,locked:false});
-  renderAZChart();
+  const lz={id:_azLZCounter,price,type:_azMarkMode,locked:false,priceLine:null};
+  _manualLZs.push(lz);
+  _applyLWZoneLine(lz);
   renderLZPanel();
 }
 
-function niceNum(v){
-  const e=Math.pow(10,Math.floor(Math.log10(v)));
-  const f=v/e;
-  return(f<1.5?1:f<3?2:f<7?5:10)*e;
+function placeLWHLine(price){
+  if(!_lwSeries)return;
+  _azHLineCounter++;
+  const hl={id:_azHLineCounter,price,locked:false,priceLine:null};
+  _azHLines.push(hl);
+  _applyLWHLine(hl);
+  _azHLineMode=false;
+  _updateHLineModeUI();
+  renderLZPanel();
 }
 
-function detectKeyLevels(candles,minP,maxP){
-  // All level marking is manual — auto RN lines and auto swing LZs removed
-  // RN lines cluttered the chart with irrelevant levels
-  // Auto LZ detection was unreliable — manually mark using H-LZ / L-LZ tools
-  return [];
+// ── Mode UI updaters ──
+function _updateMarkModeUI(){
+  const hBtn=document.getElementById('az-mark-h-btn');
+  const lBtn=document.getElementById('az-mark-l-btn');
+  if(hBtn){
+    const on=_azMarkMode==='H';
+    hBtn.style.background=on?'rgba(224,82,82,.12)':'transparent';
+    hBtn.style.borderColor=on?'rgba(224,82,82,.4)':'#1C1C1C';
+    hBtn.style.color=on?'#E05252':'#555';
+  }
+  if(lBtn){
+    const on=_azMarkMode==='L';
+    lBtn.style.background=on?'rgba(77,170,255,.12)':'transparent';
+    lBtn.style.borderColor=on?'rgba(77,170,255,.4)':'#1C1C1C';
+    lBtn.style.color=on?'#4DAAFF':'#555';
+  }
+}
+function _updateHLineModeUI(){
+  const btn=document.getElementById('az-hline-btn');
+  if(!btn)return;
+  btn.style.background=_azHLineMode?'rgba(201,168,76,.12)':'transparent';
+  btn.style.borderColor=_azHLineMode?'rgba(201,168,76,.45)':'#1C1C1C';
+  btn.style.color=_azHLineMode?'#C9A84C':'#555';
 }
 
-function renderLevelLegend(levels){
-  const el=document.getElementById('az-levels-list');
-  if(!el)return;
-  const types=[
-    {key:'round_k',label:'RN · Thousand',col:'#C9A84C'},
-    {key:'round_h',label:'RN · Hundred',col:'#C9A84C'},
-    {key:'lz_high',label:'Liq Zone ↑',col:'#E05252'},
-    {key:'lz_low',label:'Liq Zone ↓',col:'#E05252'},
-  ];
-  const found=new Set(levels.map(l=>l.type));
-  el.innerHTML=types.filter(t=>found.has(t.key)).map(t=>
-    `<span style="font-size:8px;padding:2px 6px;border-radius:3px;background:${t.col}15;color:${t.col};border:1px solid ${t.col}30;font-family:DM Mono,monospace">${t.label}</span>`
-  ).join('');
-}
+// ── END Lightweight Charts Engine ─────────────────────────────────────────────
 
 // ── Pre-session readout ──
 function updatePresessionReadout(){
   const pr=document.getElementById('az-presession-readout');
   if(!pr||!_azCandles.length)return;
-  const vis=Math.max(5,Math.min(_azViewState.visible,_azCandles.length));
-  const off=Math.max(0,_azViewState.offset);
-  const candles=_azCandles.slice(Math.max(0,_azCandles.length-vis-off),_azCandles.length-off);
+  // Use the last 60 candles for bias calculation (LW manages its own viewport)
+  const candles=_azCandles.slice(-60);
   const last=candles[candles.length-1];
   // HTF Bias — higher highs/lows vs lower highs/lows
   const c20=candles.slice(-20);
@@ -6023,12 +5860,8 @@ async function runAIAnalysis(){
   const out=document.getElementById('az-analysis-output');
   btn.disabled=true;btn.textContent='Analyzing...';
   out.innerHTML='<div class="az-thinking"><div class="az-dot"></div><div class="az-dot"></div><div class="az-dot"></div><span>Gemini is analyzing the candles...</span></div>';
-  // Use visible window — same candles on screen, capped at 100
-  const _aiVis=Math.min(100,_azViewState.visible,_azCandles.length);
-  const _aiOff=_azViewState.offset;
-  const _aiEnd=_azCandles.length-_aiOff;
-  const _aiStart=Math.max(0,_aiEnd-_aiVis);
-  const recent=_azCandles.slice(_aiStart,_aiEnd>0?_aiEnd:undefined);
+  // Use the last 100 candles for analysis (LW manages its own viewport)
+  const recent=_azCandles.slice(-100);
   const last=recent[recent.length-1];
   const first=recent[0];
   const watH=((new Date().getUTCHours()+1)%24);
@@ -6072,6 +5905,15 @@ async function runAIAnalysis(){
         .map(lz=>'L-LZ (support / buy-side): '+lz.price.toFixed(2)).join('\n')+
       '\nEvaluate whether price has swept any of these zones and whether a valid reversal signal has followed.'
     :'No zones marked by trader. Use swing high ('+swH+') and swing low ('+swL+') as approximate reference — note auto-detection may be imprecise.';
+
+  // H-Line (Round Number) context — trader marks these AFTER a liquidity sweep
+  // to tell the AI which direction the institutional algorithm is likely to follow
+  const hlineContext=_azHLines.length>0
+    ?'TRADER-MARKED ROUND NUMBER LEVELS (marked after liquidity sweep — these indicate the trader\'s directional bias for institutional follow-through):\n'+
+      [..._azHLines].sort((a,b)=>b.price-a.price)
+        .map(hl=>'RN Level: '+hl.price.toFixed(2)+' — trader expects institutional algorithm to use this as a reference after the sweep').join('\n')+
+      '\nUse these RN levels as the anchor for your direction and entry zone assessment.'
+    :'';
 
   // Build trade history context from journal for AI learning
   const histTrades=(trades||[]).slice(0,25);
@@ -6146,6 +5988,7 @@ Round Numbers Near Price: ${nearRoundsText}
 
 ==== LIQUIDITY ZONES ====
 ${manualLZContext}
+${hlineContext?'\n==== ROUND NUMBER BIAS MARKERS ====\n'+hlineContext:''}
 
 LAST ${recent.length} CANDLES — WAT timestamp (oldest→newest). Reference by time and price, never by candle number.
 ${ohlcSummary}
@@ -6369,33 +6212,37 @@ function renderAnalysisResult(r){
     `</div>`;
 }
 
-// ── Manual LZ Management ──────────────────────────────────────────────────────
+
+// ── Zone & H-Line Management ──────────────────────────────────────────────────
 
 window.toggleMarkMode=function(type){
+  // Toggle: tap same button again to exit mode
   _azMarkMode=(_azMarkMode===type)?false:type;
-  const hBtn=document.getElementById('az-mark-h-btn');
-  const lBtn=document.getElementById('az-mark-l-btn');
-  if(hBtn){
-    const on=_azMarkMode==='H';
-    hBtn.style.background=on?'rgba(224,82,82,.18)':'transparent';
-    hBtn.style.borderColor=on?'rgba(224,82,82,.6)':'#1C1C1C';
-    hBtn.style.color=on?'#E05252':'#555';
-  }
-  if(lBtn){
-    const on=_azMarkMode==='L';
-    lBtn.style.background=on?'rgba(224,82,82,.12)':'transparent';
-    lBtn.style.borderColor=on?'rgba(224,82,82,.45)':'#1C1C1C';
-    lBtn.style.color=on?'#F0A0A0':'#555';
-  }
-  // Update chart cursor
-  const panEl=document.getElementById('az-pan-overlay');
-  if(panEl)panEl.style.cursor=_azMarkMode?'crosshair':'grab';
+  // If entering a zone mode, exit H-Line mode
+  if(_azMarkMode){_azHLineMode=false;_updateHLineModeUI();}
+  _updateMarkModeUI();
+  renderLZPanel();
+};
+
+window.toggleHLineMode=function(){
+  _azHLineMode=!_azHLineMode;
+  // Exit LZ modes when entering H-Line mode
+  if(_azHLineMode){_azMarkMode=false;_updateMarkModeUI();}
+  _updateHLineModeUI();
   renderLZPanel();
 };
 
 window.removeManualLZ=function(id){
-  _manualLZs=_manualLZs.filter(lz=>lz.id!==id);
-  renderAZChart();
+  const lz=_manualLZs.find(l=>l.id===id);
+  if(lz&&lz.priceLine&&_lwSeries){try{_lwSeries.removePriceLine(lz.priceLine);}catch(e){}}
+  _manualLZs=_manualLZs.filter(l=>l.id!==id);
+  renderLZPanel();
+};
+
+window.removeHLine=function(id){
+  const hl=_azHLines.find(h=>h.id===id);
+  if(hl&&hl.priceLine&&_lwSeries){try{_lwSeries.removePriceLine(hl.priceLine);}catch(e){}}
+  _azHLines=_azHLines.filter(h=>h.id!==id);
   renderLZPanel();
 };
 
@@ -6403,56 +6250,116 @@ window.toggleLZLock=function(id){
   const lz=_manualLZs.find(l=>l.id===id);
   if(!lz)return;
   lz.locked=!lz.locked;
-  renderAZChart();
+  // Update price line style: locked = solid, unlocked = dashed
+  if(lz.priceLine){
+    try{
+      lz.priceLine.applyOptions({
+        lineWidth:lz.locked?1.5:1,
+        lineStyle:lz.locked?LightweightCharts.LineStyle.Solid:LightweightCharts.LineStyle.Dashed,
+      });
+    }catch(e){}
+  }
   renderLZPanel();
 };
 
-window.clearManualLZs=function(){
-  if(!_manualLZs.length)return;
-  _manualLZs=[];
-  _azMarkMode=false;
-  const hBtn=document.getElementById('az-mark-h-btn');
-  const lBtn=document.getElementById('az-mark-l-btn');
-  if(hBtn){hBtn.style.background='transparent';hBtn.style.borderColor='#1C1C1C';hBtn.style.color='#555';}
-  if(lBtn){lBtn.style.background='transparent';lBtn.style.borderColor='#1C1C1C';lBtn.style.color='#555';}
-  const panEl=document.getElementById('az-pan-overlay');
-  if(panEl)panEl.style.cursor='grab';
-  renderAZChart();
+window.toggleHLineLock=function(id){
+  const hl=_azHLines.find(h=>h.id===id);
+  if(!hl)return;
+  hl.locked=!hl.locked;
+  if(hl.priceLine){
+    try{
+      hl.priceLine.applyOptions({
+        lineWidth:hl.locked?1.5:1,
+        lineStyle:hl.locked?LightweightCharts.LineStyle.Solid:LightweightCharts.LineStyle.Dotted,
+      });
+    }catch(e){}
+  }
   renderLZPanel();
 };
+
+window.clearAllZones=function(){
+  // Remove all price lines from LW chart
+  if(_lwSeries){
+    [..._manualLZs,..._azHLines].forEach(z=>{
+      if(z.priceLine){try{_lwSeries.removePriceLine(z.priceLine);}catch(e){}}
+    });
+  }
+  _manualLZs=[];
+  _azHLines=[];
+  _azMarkMode=false;
+  _azHLineMode=false;
+  _updateMarkModeUI();
+  _updateHLineModeUI();
+  renderLZPanel();
+};
+
+// Keep old name working (called by old Clear All buttons still in cache)
+window.clearManualLZs=window.clearAllZones;
 
 function renderLZPanel(){
   const el=document.getElementById('az-lz-panel');
   if(!el)return;
+
+  // Mode hint
   const modeHint=document.getElementById('az-mode-hint');
   if(modeHint){
-    modeHint.textContent=_azMarkMode
-      ?(_azMarkMode==='H'?'Tap chart · placing H zone':'Tap chart · placing L zone')
-      :(_manualLZs.length?'Tap H-LZ or L-LZ to mark a new zone':'');
-    modeHint.style.color=_azMarkMode==='H'?'#E05252':_azMarkMode==='L'?'#F0A0A0':'#444';
+    if(_azMarkMode==='H'){
+      modeHint.textContent='Tap chart · placing H zone';
+      modeHint.style.color='#E05252';
+    }else if(_azMarkMode==='L'){
+      modeHint.textContent='Tap chart · placing L zone';
+      modeHint.style.color='#4DAAFF';
+    }else if(_azHLineMode){
+      modeHint.textContent='Tap chart · placing RN line';
+      modeHint.style.color='#C9A84C';
+    }else{
+      const total=_manualLZs.length+_azHLines.length;
+      modeHint.textContent=total?'Drag any line to reposition':'Tap H-LZ, L-LZ or H-LINE to mark';
+      modeHint.style.color='#444';
+    }
   }
-  if(!_manualLZs.length){el.innerHTML='';return;}
-  const sorted=[..._manualLZs].sort((a,b)=>b.price-a.price);
+
+  const noZones=!_manualLZs.length&&!_azHLines.length;
+  if(noZones){el.innerHTML='';return;}
+
+  // Sort: all zones high→low by price
+  const allLZSorted=[..._manualLZs].sort((a,b)=>b.price-a.price);
+  const allHLSorted=[..._azHLines].sort((a,b)=>b.price-a.price);
+
+  const hCol='#E05252';
+  const lCol='#4DAAFF';
+  const rnCol='#C9A84C';
+
+  const lzRows=allLZSorted.map(lz=>{
+    const col=lz.type==='H'?hCol:lCol;
+    const bg=lz.type==='H'?'rgba(224,82,82,.07)':'rgba(77,170,255,.07)';
+    const bdr=lz.type==='H'?'rgba(224,82,82,.2)':'rgba(77,170,255,.2)';
+    const lockIco=lz.locked?'🔒':'🔓';
+    return `<div style="display:flex;align-items:center;gap:7px;padding:7px 9px;background:${bg};border:1px solid ${bdr};border-radius:5px;margin-bottom:4px">`+
+      `<span style="font-size:9px;font-weight:700;color:${col};font-family:'DM Mono',monospace;padding:1px 6px;border:1px solid ${bdr};border-radius:3px;min-width:28px;text-align:center">${lz.type}</span>`+
+      `<span style="font-size:13px;font-weight:700;color:${col};font-family:'DM Mono',monospace;flex:1">${lz.price.toFixed(2)}</span>`+
+      `<button onclick="toggleLZLock(${lz.id})" style="background:${lz.locked?'rgba(201,168,76,.12)':'transparent'};border:1px solid ${lz.locked?'rgba(201,168,76,.4)':bdr};border-radius:4px;font-size:12px;padding:3px 8px;cursor:pointer;flex-shrink:0;line-height:1">${lockIco}</button>`+
+      `<button onclick="removeManualLZ(${lz.id})" style="background:transparent;border:1px solid ${bdr};border-radius:4px;color:${col};font-size:11px;padding:3px 10px;cursor:pointer;font-family:'DM Mono',monospace;flex-shrink:0">✕</button>`+
+    `</div>`;
+  }).join('');
+
+  const hlRows=allHLSorted.map(hl=>{
+    const lockIco=hl.locked?'🔒':'🔓';
+    return `<div style="display:flex;align-items:center;gap:7px;padding:7px 9px;background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:5px;margin-bottom:4px">`+
+      `<span style="font-size:9px;font-weight:700;color:${rnCol};font-family:'DM Mono',monospace;padding:1px 6px;border:1px solid rgba(201,168,76,.25);border-radius:3px;min-width:28px;text-align:center">RN</span>`+
+      `<span style="font-size:13px;font-weight:700;color:${rnCol};font-family:'DM Mono',monospace;flex:1">${hl.price.toFixed(2)}</span>`+
+      `<button onclick="toggleHLineLock(${hl.id})" style="background:${hl.locked?'rgba(201,168,76,.12)':'transparent'};border:1px solid ${hl.locked?'rgba(201,168,76,.4)':'rgba(201,168,76,.2)'};border-radius:4px;font-size:12px;padding:3px 8px;cursor:pointer;flex-shrink:0;line-height:1">${lockIco}</button>`+
+      `<button onclick="removeHLine(${hl.id})" style="background:transparent;border:1px solid rgba(201,168,76,.3);border-radius:4px;color:${rnCol};font-size:11px;padding:3px 10px;cursor:pointer;font-family:'DM Mono',monospace;flex-shrink:0">✕</button>`+
+    `</div>`;
+  }).join('');
+
   el.innerHTML=
-    `<div style="font-size:8px;color:#2A2A2A;letter-spacing:.1em;text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:5px">Marked Zones · drag line on chart to adjust</div>`+
-    sorted.map(lz=>{
-      const col=lz.type==='H'?'#E05252':'#F0A0A0';
-      const bg=lz.locked
-        ?(lz.type==='H'?'rgba(224,82,82,.13)':'rgba(224,82,82,.09)')
-        :(lz.type==='H'?'rgba(224,82,82,.07)':'rgba(224,82,82,.04)');
-      const bdr=lz.type==='H'?'rgba(224,82,82,.22)':'rgba(224,82,82,.15)';
-      const lockIco=lz.locked?'🔒':'🔓';
-      const lockTitle=lz.locked?'Locked — tap to unlock':'Unlocked — tap to lock';
-      return `<div style="display:flex;align-items:center;gap:7px;padding:7px 9px;background:${bg};border:1px solid ${bdr};border-radius:5px;margin-bottom:4px">`+
-        `<span style="font-size:9px;font-weight:700;color:${col};font-family:'DM Mono',monospace;padding:1px 6px;border:1px solid ${bdr};border-radius:3px;flex-shrink:0">${lz.type}</span>`+
-        `<span style="font-size:13px;font-weight:700;color:${col};font-family:'DM Mono',monospace;flex:1">${lz.price.toFixed(2)}</span>`+
-        `<button onclick="toggleLZLock(${lz.id})" title="${lockTitle}" style="background:${lz.locked?'rgba(201,168,76,.12)':'transparent'};border:1px solid ${lz.locked?'rgba(201,168,76,.4)':'rgba(224,82,82,.18)'};border-radius:4px;font-size:12px;padding:3px 8px;cursor:pointer;flex-shrink:0;line-height:1">${lockIco}</button>`+
-        `<button onclick="removeManualLZ(${lz.id})" style="background:transparent;border:1px solid rgba(224,82,82,.3);border-radius:4px;color:#E05252;font-size:11px;padding:3px 10px;cursor:pointer;font-family:'DM Mono',monospace;flex-shrink:0">✕</button>`+
-      `</div>`;
-    }).join('');
+    `<div style="font-size:8px;color:#2A2A2A;letter-spacing:.1em;text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:5px">Marked Zones · drag line to reposition</div>`+
+    lzRows+hlRows;
 }
 
-// ── END LZ Management ─────────────────────────────────────────────────────────
+// ── END Zone & H-Line Management ──────────────────────────────────────────────
+
 
 // ── Init ──
 function initAnalyzer(){
