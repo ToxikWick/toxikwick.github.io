@@ -5098,14 +5098,15 @@ function selectTF(btn){
 
 // ── Twelve Data Key & Source Management ───────────────────────────────────────
 const TD_SOURCES=[
-  {id:'',          label:'Forex.com · TradingView Aligned', desc:'Spot gold via Forex.com feed — matches TradingView candle closes and wicks. Recommended for ToxikWick strategy.'},
-  {id:'FOREX_COM', label:'Forex.com (explicit)',            desc:'Forex.com exchange param — same feed as default, use if default returns no data.'},
-  {id:'OANDA',     label:'OANDA',                          desc:'OANDA feed (may require paid tier)'},
-  {id:'FXCM',      label:'FXCM',                           desc:'FXCM feed (may require paid tier)'},
+  {id:'FOREX_COM', label:'Forex.com · Default',   desc:'Spot gold from Forex.com exchange — closest match to TradingView. Recommended.'},
+  {id:'',          label:'OTC Interbank',           desc:'Generic aggregated spot price — most data available, slightly different from TradingView.'},
+  {id:'OANDA',     label:'OANDA',                  desc:'OANDA feed (may require paid tier)'},
+  {id:'FXCM',      label:'FXCM',                   desc:'FXCM feed (may require paid tier)'},
 ];
 
 function getTDKey(){try{return localStorage.getItem('tw_td_key')||'';}catch(e){return '';}}
-function getTDSource(){try{return localStorage.getItem('tw_td_source')||'';}catch(e){return '';}}
+// Default source is FOREX_COM — closest match to TradingView's XAU/USD data
+function getTDSource(){try{return localStorage.getItem('tw_td_source')||'FOREX_COM';}catch(e){return 'FOREX_COM';}}
 function getTDOffset(){try{return parseFloat(localStorage.getItem('tw_td_offset')||'0')||0;}catch(e){return 0;}}
 function _saveTDKey(k){try{localStorage.setItem('tw_td_key',k);}catch(e){}}
 function _saveTDSource(s){try{localStorage.setItem('tw_td_source',s);}catch(e){}}
@@ -5131,7 +5132,7 @@ function azShowDataKeySetup(isChange){
         (isChange?'Update Chart Data Settings':'Chart Data Setup')+
       `</div>`+
       `<div style="font-size:10px;color:#555;font-family:'DM Mono',monospace;line-height:1.7;margin-bottom:10px">`+
-        `Twelve Data · 800 calls/day free.<br>Candles fetched in UTC → aligns with TradingView midnight open.<br>Key stored on this device only.`+
+        `Twelve Data · 800 calls/day free.<br>Default: Forex.com exchange (closest match to TradingView).<br>Auto-falls back to OTC if Forex.com is unavailable on your tier.<br>Key stored on this device only.`+
       `</div>`+
 
       `<div style="font-size:9px;color:#444;font-family:'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">API Key</div>`+
@@ -5252,45 +5253,65 @@ async function loadAnalyzerChart(){
     '<div style="font-size:11px;color:#333;font-family:DM Mono,monospace;text-align:center;padding:16px 0">Tap Run Analysis to check confluences on the loaded candles</div>';
 
   const wrap=document.getElementById('az-chart-wrap');
-  if(wrap)wrap.innerHTML='<div class="az-chart-loading">Fetching XAU/USD candles (Forex.com)...</div>';
+  if(wrap)wrap.innerHTML='<div class="az-chart-loading">Fetching XAU/USD candles...</div>';
 
   try{
     const intervalMap={'4h':'4h','1h':'1h','15min':'15min','5min':'5min'};
     const interval=intervalMap[_azTF]||'1h';
     const src=getTDSource();
-    // Default (src=''): use XAU/USD:Forex.com — aligns candle closes and wicks with TradingView
-    // Explicit source selected: use XAU/USD base with exchange override param
-    const symbolParam=src?'XAU%2FUSD':'XAU%2FUSD%3AForex.com';
-    const exchangeParam=src?`&exchange=${encodeURIComponent(src)}`:'';
-    const url=`${TD_URL}/time_series?symbol=${symbolParam}&interval=${interval}&outputsize=600&apikey=${TDKEY}${exchangeParam}`;
 
-    const r=await fetch(url);
-    const d=await r.json();
+    // Per-timeframe outputsize — ensures sufficient candle history for each TF
+    // Twelve Data free tier supports up to 5000; keeping these conservative to stay fast
+    const outputsizeMap={'4h':300,'1h':500,'15min':672,'5min':900};
+    const outputsize=outputsizeMap[_azTF]||500;
+
+    // Always use symbol=XAU/USD with exchange param.
+    // timezone=UTC ensures datetime strings come back in UTC regardless of API defaults.
+    const exchangeParam=src?`&exchange=${encodeURIComponent(src)}`:'';
+    const url=`${TD_URL}/time_series?symbol=XAU%2FUSD&interval=${interval}&outputsize=${outputsize}&timezone=UTC&apikey=${TDKEY}${exchangeParam}`;
+
+    let r=await fetch(url);
+    let d=await r.json();
+
+    // Auto-fallback: if the selected exchange is unavailable on the free tier,
+    // silently retry without the exchange param (OTC Interbank) so the chart still loads.
+    let usedFallback=false;
+    if((d.status==='error'||!d.values||!d.values.length)&&src){
+      const errMsg=(d.message||'').toLowerCase();
+      if(errMsg.includes('exchange')||errMsg.includes('not found')||errMsg.includes('instrument')||errMsg.includes('symbol')){
+        const fallbackUrl=`${TD_URL}/time_series?symbol=XAU%2FUSD&interval=${interval}&outputsize=${outputsize}&timezone=UTC&apikey=${TDKEY}`;
+        r=await fetch(fallbackUrl);
+        d=await r.json();
+        usedFallback=true;
+      }
+    }
 
     if(d.status==='error'||!d.values||!d.values.length){
       let msg=d.message||'No candle data returned.';
       if(msg.toLowerCase().includes('api key')||msg.toLowerCase().includes('invalid')||msg.toLowerCase().includes('not valid')){
-        msg='Invalid Twelve Data key — tap 📡 Data to update.';
-      } else if(msg.toLowerCase().includes('exchange')||msg.toLowerCase().includes('not found')||msg.toLowerCase().includes('instrument')){
-        msg=`"${src||'Forex.com'}" source unavailable on your API tier. Tap 📡 Data and try a different source or the Default.`;
+        msg='Invalid Twelve Data API key — tap 📡 Data to update your key.';
       } else if(msg.toLowerCase().includes('limit')||msg.toLowerCase().includes('quota')){
-        msg='Daily limit reached (800/day free). Try again tomorrow or upgrade at twelvedata.com';
+        msg='Daily limit reached (800 calls/day on free tier). Try again tomorrow or upgrade at twelvedata.com';
+      } else {
+        msg='Unable to load candle data — '+msg+'. Tap 📡 Data to check your settings.';
       }
-      if(wrap)wrap.innerHTML=`<div class="az-chart-loading" style="color:#E05252;line-height:1.7;padding:18px 8px">${msg}</div>`;
+      if(wrap)wrap.innerHTML=`<div class="az-chart-loading" style="color:#E05252;line-height:1.8;padding:18px 12px;font-size:11px">${msg}</div>`;
       _azLoading=false;if(loadBtn){loadBtn.disabled=false;loadBtn.textContent='Load Chart';}
       return;
     }
 
-    // Twelve Data returns newest first — reverse to oldest first
-    // datetime strings are UTC ("2026-05-15 10:00:00") — MUST parse as UTC
-    // Appending 'T' + 'Z' forces ISO 8601 UTC interpretation in all browsers
+    // Twelve Data returns newest first — reverse to oldest→newest.
+    // datetime strings come back in UTC (we pass timezone=UTC explicitly).
+    // Appending 'T'+'Z' forces ISO 8601 UTC parse in all browsers regardless of device locale.
+    // NO weekend filter — Twelve Data only returns candles for active market hours.
+    // The old Sat/Sun filter was removing valid Sunday FX-open candles (gold opens ~21:00 UTC Sun).
     const rawCandles=[...d.values].reverse().map(c=>({
       t:new Date(c.datetime.replace(' ','T')+'Z'),
       o:parseFloat(c.open),
       h:parseFloat(c.high),
       l:parseFloat(c.low),
       c:parseFloat(c.close),
-    })).filter(c=>{const day=c.t.getUTCDay();return day!==0&&day!==6;});
+    }));
 
     // Apply price offset — aligns Twelve Data feed with MT5/TradingView broker price
     const offset=getTDOffset();
@@ -5312,11 +5333,13 @@ async function loadAnalyzerChart(){
     if(ac)ac.style.display='block';
     if(refBtn)refBtn.style.display='inline-flex';
 
-    const srcLabel=TD_SOURCES.find(s=>s.id===src)?.label||'Twelve Data';
+    const srcLabel=usedFallback
+      ? 'OTC Interbank (Forex.com unavailable on free tier)'
+      : (TD_SOURCES.find(s=>s.id===src)?.label||'Twelve Data');
     const activeOffset=getTDOffset();
     const offsetLabel=activeOffset!==0?` · offset ${activeOffset>0?'+':''}${activeOffset}`:'';
     const lu=document.getElementById('az-last-updated');
-    if(lu)lu.textContent='Updated '+new Date().toLocaleTimeString()+' · '+srcLabel+offsetLabel;
+    if(lu)lu.textContent='Updated '+new Date().toLocaleTimeString()+' · '+srcLabel+' · '+_azCandles.length+' candles'+offsetLabel;
 
     const last=_azCandles[_azCandles.length-1];
     const prev=_azCandles[_azCandles.length-2]||last;
