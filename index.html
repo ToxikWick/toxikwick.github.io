@@ -5566,11 +5566,14 @@ function renderLWChart(){
   });
 
   // Re-apply all zones — they persist across TF switches by price+anchorTime
+  // Zones are applied AFTER fitContent so they don't affect the initial zoom level
   _manualLZs.forEach(lz=>_applyLWZoneLine(lz));
   _azHLines.forEach(hl=>_applyLWHLine(hl));
 
-  // Fit ALL candles in view on initial load — user can then scroll/zoom
-  _lwChart.timeScale().fitContent();
+  // scrollToRealTime: show last candle at right edge + rightOffset(8 bars) space.
+  // The viewport clips LineSeries data flush to the right edge — no zoom-out.
+  // (fitContent was causing LW to zoom out to include the far-future LineSeries endpoint)
+  _lwChart.timeScale().scrollToRealTime();
 
   // Update price header
   const pd=document.getElementById('az-price-display');
@@ -5623,8 +5626,9 @@ function _applyLWZoneLine(lz){
   _setZoneLineData(lz);
 }
 
-// Build line data from anchor candle → far future so line always reaches right edge
-// 500 candle-widths into the future guarantees the ray extends past any scrollable area
+// Build line data from anchor candle → 20 bar-widths past last candle.
+// scrollToRealTime() clips the line at the viewport right edge, so it
+// appears flush to the right side without LW auto-zooming the time scale.
 function _setZoneLineData(lz){
   if(!lz.lineSeries||!_azCandles.length)return;
   // Find the candle closest to the stored anchor time (UTC ms)
@@ -5636,8 +5640,8 @@ function _setZoneLineData(lz){
   }
   const anchorSec=Math.floor(anchorC.t.getTime()/1000);
   const tfSec={'4h':14400,'1h':3600,'15min':900,'5min':300}[_azTF]||3600;
-  // Extend 500 candle-widths into the future — line always reaches beyond right edge
-  const extSec=Math.floor(_azCandles[_azCandles.length-1].t.getTime()/1000)+tfSec*500;
+  // 20 bar-widths past last candle — enough to reach the right edge at any zoom level
+  const extSec=Math.floor(_azCandles[_azCandles.length-1].t.getTime()/1000)+tfSec*20;
 
   lz.lineSeries.setData([
     {time:anchorSec,value:lz.price},
