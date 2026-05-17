@@ -5049,7 +5049,7 @@ let _lwDragHLine=null;   // h-line being dragged
 let _lwDragStartY=null;
 
 // ── Manual LZ state ──
-let _manualLZs=[];       // [{id,price,type:'H'|'L',locked,priceLine}]
+let _manualLZs=[];       // [{id,price,type:'H'|'L',locked,anchorTime,lineSeries}]
 let _azMarkMode=false;   // false | 'H' | 'L'
 let _azLZCounter=0;
 
@@ -5588,28 +5588,64 @@ function renderLWChart(){
 // ── Clear all zone lines before TF switch ──
 function _clearAllZoneLines(){
   if(!_lwSeries)return;
+  // Last-price dashed line
   if(_lwLastPriceLine){try{_lwSeries.removePriceLine(_lwLastPriceLine);}catch(e){}_lwLastPriceLine=null;}
-  _manualLZs.forEach(lz=>{
-    if(lz.priceLine){try{_lwSeries.removePriceLine(lz.priceLine);}catch(e){}lz.priceLine=null;}
-  });
+  // LZ zones use LineSeries (anchored ray) — removed from chart instance
+  if(_lwChart){
+    _manualLZs.forEach(lz=>{
+      if(lz.lineSeries){try{_lwChart.removeSeries(lz.lineSeries);}catch(e){}lz.lineSeries=null;}
+    });
+  }
+  // RN H-Lines use priceLine — removed from candlestick series
   _azHLines.forEach(hl=>{
     if(hl.priceLine){try{_lwSeries.removePriceLine(hl.priceLine);}catch(e){}hl.priceLine=null;}
   });
 }
 
-// ── H-LZ / L-LZ: full-width priceLine — identical to RN, always reaches right edge ──
+// ── H-LZ / L-LZ: LineSeries anchored ray — starts at tapped candle, extends right ──
+// Uses LineSeries (not priceLine) so the line starts exactly at the anchor candle.
+// autoscaleInfoProvider:()=>null prevents it from affecting Y-scale or fitContent zoom.
+// scrollToRealTime() (called in renderLWChart) never zooms to show the future endpoint.
 function _applyLWZoneLine(lz){
-  if(!_lwSeries)return;
-  if(lz.priceLine){try{_lwSeries.removePriceLine(lz.priceLine);}catch(e){}lz.priceLine=null;}
+  if(!_lwChart||!_lwSeries)return;
+  // Remove old LineSeries if re-applying after TF switch
+  if(lz.lineSeries){try{_lwChart.removeSeries(lz.lineSeries);}catch(e){}lz.lineSeries=null;}
   const col=lz.type==='H'?'#E05252':'#4DAAFF';
-  lz.priceLine=_lwSeries.createPriceLine({
-    price:lz.price,
+  lz.lineSeries=_lwChart.addLineSeries({
     color:col,
     lineWidth:lz.locked?2:1,
     lineStyle:lz.locked?LightweightCharts.LineStyle.Solid:LightweightCharts.LineStyle.Dashed,
-    axisLabelVisible:true,
+    lastValueVisible:true,
+    priceLineVisible:false,
+    crosshairMarkerVisible:false,
     title:lz.type+'-LZ',
+    priceScaleId:'right',
+    // Critical: prevents this series from affecting Y-axis autoscale or fitContent zoom
+    autoscaleInfoProvider:()=>null,
   });
+  _setZoneLineData(lz);
+}
+
+// Set the two data points: anchor candle → far-future endpoint.
+// scrollToRealTime() means LW never tries to show the far-future point in the viewport —
+// it simply clips the line flush at the right edge of the visible chart area.
+function _setZoneLineData(lz){
+  if(!lz.lineSeries||!_azCandles.length)return;
+  // Find the nearest candle to the stored anchor time
+  let anchorC=_azCandles[0];
+  let minDiff=Infinity;
+  for(const c of _azCandles){
+    const diff=Math.abs(c.t.getTime()-(lz.anchorTime||0));
+    if(diff<minDiff){minDiff=diff;anchorC=c;}
+  }
+  const anchorSec=Math.floor(anchorC.t.getTime()/1000);
+  // Far-future endpoint: year 2030 unix timestamp — scrollToRealTime never shows this,
+  // but it guarantees the ray extends past the right edge at any zoom level.
+  const farFutureSec=1893456000; // 2030-01-01 00:00 UTC
+  lz.lineSeries.setData([
+    {time:anchorSec,    value:lz.price},
+    {time:farFutureSec, value:lz.price},
+  ]);
 }
 
 // ── H-LINE (RN): full-width horizontal via priceLine — correct for round numbers ──
@@ -5686,13 +5722,13 @@ function _lwPointerMove(e){
   const price=_lwSeries.coordinateToPrice(relY);
   if(price===null)return;
   const snapped=Math.round(price*100)/100;
-
   if(_lwDragZone){
     _lwDragZone.price=snapped;
-    // LZ zones now use priceLine — applyOptions updates it live during drag
-    if(_lwDragZone.priceLine)_lwDragZone.priceLine.applyOptions({price:snapped});
+    // LZ uses LineSeries — update both data points with new price
+    _setZoneLineData(_lwDragZone);
   }else if(_lwDragHLine){
     _lwDragHLine.price=snapped;
+    // RN uses priceLine — applyOptions moves it live
     if(_lwDragHLine.priceLine)_lwDragHLine.priceLine.applyOptions({price:snapped});
   }
 }
@@ -5716,7 +5752,7 @@ function placeLWZone(price,anchorTime){
     type:_azMarkMode,
     locked:false,
     anchorTime:anchorTime||Date.now(),
-    priceLine:null,
+    lineSeries:null,
   };
   _manualLZs.push(lz);
   _applyLWZoneLine(lz);
@@ -6268,9 +6304,9 @@ window.toggleHLineMode=function(){
 
 window.removeManualLZ=function(id){
   const lz=_manualLZs.find(l=>l.id===id);
-  if(lz){
-    if(lz.priceLine&&_lwSeries){try{_lwSeries.removePriceLine(lz.priceLine);}catch(e){}}
-    lz.priceLine=null;
+  if(lz&&lz.lineSeries&&_lwChart){
+    try{_lwChart.removeSeries(lz.lineSeries);}catch(e){}
+    lz.lineSeries=null;
   }
   _manualLZs=_manualLZs.filter(l=>l.id!==id);
   renderLZPanel();
@@ -6287,9 +6323,9 @@ window.toggleLZLock=function(id){
   const lz=_manualLZs.find(l=>l.id===id);
   if(!lz)return;
   lz.locked=!lz.locked;
-  if(lz.priceLine){
+  if(lz.lineSeries){
     try{
-      lz.priceLine.applyOptions({
+      lz.lineSeries.applyOptions({
         lineWidth:lz.locked?2:1,
         lineStyle:lz.locked?LightweightCharts.LineStyle.Solid:LightweightCharts.LineStyle.Dashed,
       });
@@ -6314,10 +6350,12 @@ window.toggleHLineLock=function(id){
 };
 
 window.clearAllZones=function(){
-  if(_lwSeries){
+  if(_lwChart){
     _manualLZs.forEach(lz=>{
-      if(lz.priceLine){try{_lwSeries.removePriceLine(lz.priceLine);}catch(e){}lz.priceLine=null;}
+      if(lz.lineSeries){try{_lwChart.removeSeries(lz.lineSeries);}catch(e){}lz.lineSeries=null;}
     });
+  }
+  if(_lwSeries){
     _azHLines.forEach(hl=>{
       if(hl.priceLine){try{_lwSeries.removePriceLine(hl.priceLine);}catch(e){}hl.priceLine=null;}
     });
