@@ -5589,22 +5589,17 @@ function renderLWChart(){
 function _clearAllZoneLines(){
   if(!_lwSeries)return;
   if(_lwLastPriceLine){try{_lwSeries.removePriceLine(_lwLastPriceLine);}catch(e){}_lwLastPriceLine=null;}
-  // LZ zones now use priceLine (same as RN) — simple removal
   _manualLZs.forEach(lz=>{
     if(lz.priceLine){try{_lwSeries.removePriceLine(lz.priceLine);}catch(e){}lz.priceLine=null;}
   });
   _azHLines.forEach(hl=>{
     if(hl.priceLine){try{_lwSeries.removePriceLine(hl.priceLine);}catch(e){}hl.priceLine=null;}
   });
-  // Clear anchor markers
-  try{_lwSeries.setMarkers([]);}catch(e){}
 }
 
-// ── H-LZ / L-LZ: full-width priceLine (same as RN) — guaranteed to reach right edge ──
-// Anchor position is shown with an arrow marker on the candle where the zone was tapped.
+// ── H-LZ / L-LZ: full-width priceLine — identical to RN, always reaches right edge ──
 function _applyLWZoneLine(lz){
   if(!_lwSeries)return;
-  // Remove old priceLine if re-applying after TF switch
   if(lz.priceLine){try{_lwSeries.removePriceLine(lz.priceLine);}catch(e){}lz.priceLine=null;}
   const col=lz.type==='H'?'#E05252':'#4DAAFF';
   lz.priceLine=_lwSeries.createPriceLine({
@@ -5615,33 +5610,6 @@ function _applyLWZoneLine(lz){
     axisLabelVisible:true,
     title:lz.type+'-LZ',
   });
-  // Rebuild anchor markers for all zones so the marked-candle indicator stays accurate
-  _updateAnchorMarkers();
-}
-
-// Rebuild arrow markers at each zone's anchor candle — shows WHERE the LZ was identified
-function _updateAnchorMarkers(){
-  if(!_lwSeries||!_azCandles.length)return;
-  const markers=_manualLZs.map(lz=>{
-    // Find the nearest candle to the stored anchor time
-    let best=_azCandles[0];
-    let minDiff=Infinity;
-    for(const c of _azCandles){
-      const diff=Math.abs(c.t.getTime()-(lz.anchorTime||0));
-      if(diff<minDiff){minDiff=diff;best=c;}
-    }
-    return {
-      time:Math.floor(best.t.getTime()/1000),
-      position:lz.type==='H'?'aboveBar':'belowBar',
-      color:lz.type==='H'?'#E05252':'#4DAAFF',
-      shape:lz.type==='H'?'arrowDown':'arrowUp',
-      size:1,
-      text:'',
-    };
-  }).filter(Boolean);
-  // LW requires markers sorted by time asc
-  markers.sort((a,b)=>a.time-b.time);
-  try{_lwSeries.setMarkers(markers);}catch(e){}
 }
 
 // ── H-LINE (RN): full-width horizontal via priceLine — correct for round numbers ──
@@ -6305,7 +6273,6 @@ window.removeManualLZ=function(id){
     lz.priceLine=null;
   }
   _manualLZs=_manualLZs.filter(l=>l.id!==id);
-  _updateAnchorMarkers();
   renderLZPanel();
 };
 
@@ -6348,16 +6315,12 @@ window.toggleHLineLock=function(id){
 
 window.clearAllZones=function(){
   if(_lwSeries){
-    // LZ zones use priceLine
     _manualLZs.forEach(lz=>{
       if(lz.priceLine){try{_lwSeries.removePriceLine(lz.priceLine);}catch(e){}lz.priceLine=null;}
     });
-    // H-Lines use priceLine
     _azHLines.forEach(hl=>{
       if(hl.priceLine){try{_lwSeries.removePriceLine(hl.priceLine);}catch(e){}hl.priceLine=null;}
     });
-    // Clear anchor markers
-    try{_lwSeries.setMarkers([]);}catch(e){}
   }
   _manualLZs=[];
   _azHLines=[];
