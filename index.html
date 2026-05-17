@@ -5565,15 +5565,16 @@ function renderLWChart(){
     title:'',
   });
 
-  // Re-apply all zones — they persist across TF switches by price+anchorTime
-  // Zones are applied AFTER fitContent so they don't affect the initial zoom level
+  // Establish the viewport on candle data FIRST — before adding LineSeries zones.
+  // scrollToRealTime pins the time scale to last candle + rightOffset.
+  // _applyLWZoneLine then saves this range and restores it after adding each LineSeries,
+  // preventing the far-future LineSeries endpoint from expanding the time scale.
+  _lwChart.timeScale().scrollToRealTime();
+
+  // Re-apply all zones — persist across TF switches.
+  // Each LineSeries zone saves+restores the viewport range internally.
   _manualLZs.forEach(lz=>_applyLWZoneLine(lz));
   _azHLines.forEach(hl=>_applyLWHLine(hl));
-
-  // scrollToRealTime: show last candle at right edge + rightOffset(8 bars) space.
-  // The viewport clips LineSeries data flush to the right edge — no zoom-out.
-  // (fitContent was causing LW to zoom out to include the far-future LineSeries endpoint)
-  _lwChart.timeScale().scrollToRealTime();
 
   // Update price header
   const pd=document.getElementById('az-price-display');
@@ -5603,13 +5604,18 @@ function _clearAllZoneLines(){
 }
 
 // ── H-LZ / L-LZ: LineSeries anchored ray — starts at tapped candle, extends right ──
-// Uses LineSeries (not priceLine) so the line starts exactly at the anchor candle.
-// autoscaleInfoProvider:()=>null prevents it from affecting Y-scale or fitContent zoom.
-// scrollToRealTime() (called in renderLWChart) never zooms to show the future endpoint.
+// Save/restore the visible time range around every addLineSeries + setData call.
+// Without this, LW expands the time scale to include the far-future endpoint,
+// causing the "1 Jan" label and zooming the viewport way out.
 function _applyLWZoneLine(lz){
   if(!_lwChart||!_lwSeries)return;
   // Remove old LineSeries if re-applying after TF switch
   if(lz.lineSeries){try{_lwChart.removeSeries(lz.lineSeries);}catch(e){}lz.lineSeries=null;}
+
+  // ── Save current visible range BEFORE adding the LineSeries ──
+  let savedRange=null;
+  try{savedRange=_lwChart.timeScale().getVisibleRange();}catch(e){}
+
   const col=lz.type==='H'?'#E05252':'#4DAAFF';
   lz.lineSeries=_lwChart.addLineSeries({
     color:col,
@@ -5620,10 +5626,16 @@ function _applyLWZoneLine(lz){
     crosshairMarkerVisible:false,
     title:lz.type+'-LZ',
     priceScaleId:'right',
-    // Critical: prevents this series from affecting Y-axis autoscale or fitContent zoom
+    // Prevents this series affecting Y-axis autoscale
     autoscaleInfoProvider:()=>null,
   });
+
   _setZoneLineData(lz);
+
+  // ── Restore the range immediately so time scale doesn't expand to 2030 ──
+  if(savedRange){
+    try{_lwChart.timeScale().setVisibleRange(savedRange);}catch(e){}
+  }
 }
 
 // Set the two data points: anchor candle → far-future endpoint.
