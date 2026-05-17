@@ -5604,18 +5604,9 @@ function _clearAllZoneLines(){
 }
 
 // ── H-LZ / L-LZ: LineSeries anchored ray — starts at tapped candle, extends right ──
-// Save/restore the visible time range around every addLineSeries + setData call.
-// Without this, LW expands the time scale to include the far-future endpoint,
-// causing the "1 Jan" label and zooming the viewport way out.
 function _applyLWZoneLine(lz){
   if(!_lwChart||!_lwSeries)return;
-  // Remove old LineSeries if re-applying after TF switch
   if(lz.lineSeries){try{_lwChart.removeSeries(lz.lineSeries);}catch(e){}lz.lineSeries=null;}
-
-  // ── Save current visible range BEFORE adding the LineSeries ──
-  let savedRange=null;
-  try{savedRange=_lwChart.timeScale().getVisibleRange();}catch(e){}
-
   const col=lz.type==='H'?'#E05252':'#4DAAFF';
   lz.lineSeries=_lwChart.addLineSeries({
     color:col,
@@ -5626,31 +5617,16 @@ function _applyLWZoneLine(lz){
     crosshairMarkerVisible:false,
     title:lz.type+'-LZ',
     priceScaleId:'right',
-    // Prevents this series affecting Y-axis autoscale
     autoscaleInfoProvider:()=>null,
   });
-
   _setZoneLineData(lz);
-
-  // ── Restore the range — extended to include rightOffset space so line reaches price axis ──
-  // Without the rightOffset extension, the range ends at last candle and the line stops there.
-  if(savedRange){
-    try{
-      const tfSec={'4h':14400,'1h':3600,'15min':900,'5min':300}[_azTF]||3600;
-      const lastCandleSec=_azCandles.length?Math.floor(_azCandles[_azCandles.length-1].t.getTime()/1000):savedRange.to;
-      // 10 bar-widths of right margin — enough to reach the price axis at any zoom level
-      const to=lastCandleSec+tfSec*10;
-      _lwChart.timeScale().setVisibleRange({from:savedRange.from, to});
-    }catch(e){}
-  }
 }
 
-// Set the two data points: anchor candle → far-future endpoint.
-// scrollToRealTime() means LW never tries to show the far-future point in the viewport —
-// it simply clips the line flush at the right edge of the visible chart area.
+// Anchor candle → 50 bar-widths past the last candle.
+// 50 bars = a few weeks on 1H, a few months on 4H — well past the right edge,
+// but close enough that the time scale shows sensible dates (Jun, Jul...) not year 2030.
 function _setZoneLineData(lz){
   if(!lz.lineSeries||!_azCandles.length)return;
-  // Find the nearest candle to the stored anchor time
   let anchorC=_azCandles[0];
   let minDiff=Infinity;
   for(const c of _azCandles){
@@ -5658,12 +5634,11 @@ function _setZoneLineData(lz){
     if(diff<minDiff){minDiff=diff;anchorC=c;}
   }
   const anchorSec=Math.floor(anchorC.t.getTime()/1000);
-  // Far-future endpoint: year 2030 unix timestamp — scrollToRealTime never shows this,
-  // but it guarantees the ray extends past the right edge at any zoom level.
-  const farFutureSec=1893456000; // 2030-01-01 00:00 UTC
+  const tfSec={'4h':14400,'1h':3600,'15min':900,'5min':300}[_azTF]||3600;
+  const endSec=Math.floor(_azCandles[_azCandles.length-1].t.getTime()/1000)+tfSec*50;
   lz.lineSeries.setData([
-    {time:anchorSec,    value:lz.price},
-    {time:farFutureSec, value:lz.price},
+    {time:anchorSec, value:lz.price},
+    {time:endSec,    value:lz.price},
   ]);
 }
 
